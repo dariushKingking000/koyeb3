@@ -1,0 +1,83 @@
+name: Temp Email Monitor
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  check-email:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📦 نصب jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    - name: 📧 تنظیم ایمیل
+      id: email
+      run: |
+        USERNAME="${{ secrets.TEMP_EMAIL_USERNAME }}"
+        DOMAIN="${{ secrets.TEMP_EMAIL_DOMAIN }}"
+        EMAIL="${USERNAME}@${DOMAIN}"
+        echo "email=${EMAIL}" >> $GITHUB_OUTPUT
+        echo "username=${USERNAME}" >> $GITHUB_OUTPUT
+        echo "domain=${DOMAIN}" >> $GITHUB_OUTPUT
+        echo "::notice:: ایمیل آماده: $EMAIL"
+
+    - name: 📥 چک کردن inbox (Python)
+      id: inbox
+      env:
+        USERNAME: ${{ steps.email.outputs.username }}
+        DOMAIN: ${{ steps.email.outputs.domain }}
+      run: |
+        python3 << 'EOF'
+        import requests
+        import os
+        import json
+        
+        username = os.getenv('USERNAME')
+        domain = os.getenv('DOMAIN')
+        
+        print(f"🔍 چک کردن {username}@{domain}")
+        
+        # لیست ایمیل‌ها
+        url = f"https://www.1secmail.com/api/v1/?action=getMessages&login={username}&domain={domain}"
+        response = requests.get(url)
+        
+        if response.status_code != 200:
+            print(f"❌ خطا API: {response.status_code}")
+            exit(1)
+        
+        messages = response.json()
+        print(f"تعداد ایمیل: {len(messages)}")
+        
+        if messages:
+            print("✅ ایمیل‌های موجود:")
+            # اولین ایمیل
+            msg_id = messages[0]['id']
+            detail_url = f"https://www.1secmail.com/api/v1/?action=readMessage&login={username}&domain={domain}&id={msg_id}"
+            details = requests.get(detail_url).json()
+            
+            print(f"از: {details.get('from', 'N/A')}")
+            print(f"موضوع: {details.get('subject', 'N/A')}")
+            print(f"تاریخ: {details.get('date', 'N/A')}")
+            
+            with open('email_content.txt', 'w') as f:
+                f.write(details.get('textBody', ''))
+            print("📄 محتوای ایمیل در email_content.txt")
+            
+            print("status=success" >> os.environ['GITHUB_OUTPUT'])
+        else:
+            print("📭 inbox خالی - منتظر ایمیل باش!")
+            print("status=empty" >> os.environ['GITHUB_OUTPUT'])
+        EOF
+
+    - name: 📤 نتیجه نهایی
+      run: |
+        echo "✅ تمام شد!"
+        echo "ایمیل: ${{ steps.email.outputs.email }}"
+        echo "وضعیت: ${{ steps.inbox.outputs.status }}"
+        
+        # آپلود محتوای ایمیل (اختیاری)
+        if [ -f email_content.txt ]; then
+          echo "محتوای ایمیل:"
+          cat email_content.txt
+        fi
