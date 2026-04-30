@@ -1,83 +1,49 @@
-name: Temp Email Monitor
+name: ✅ Fixed Email Checker
 on:
   push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   check-email:
     runs-on: ubuntu-latest
     steps:
-    - name: 📦 نصب jq
+    - uses: actions/checkout@v4
+    
+    - name: 📦 jq نصب
       run: sudo apt-get update && sudo apt-get install -y jq
 
-    - name: 📧 تنظیم ایمیل
+    - name: 📧 ایمیل
       id: email
+      env:
+        USERNAME: ${{ secrets.TEMP_EMAIL_USERNAME }}
+        DOMAIN: ${{ secrets.TEMP_EMAIL_DOMAIN }}
       run: |
-        USERNAME="${{ secrets.TEMP_EMAIL_USERNAME }}"
-        DOMAIN="${{ secrets.TEMP_EMAIL_DOMAIN }}"
-        EMAIL="${USERNAME}@${DOMAIN}"
-        echo "email=${EMAIL}" >> $GITHUB_OUTPUT
-        echo "username=${USERNAME}" >> $GITHUB_OUTPUT
-        echo "domain=${DOMAIN}" >> $GITHUB_OUTPUT
-        echo "::notice:: ایمیل آماده: $EMAIL"
+        EMAIL="$USERNAME@$DOMAIN"
+        echo "email=$EMAIL" >> $GITHUB_OUTPUT
+        echo "ایمیل: $EMAIL"
 
-    - name: 📥 چک کردن inbox (Python)
+    - name: 📥 چک inbox (ساده)
       id: inbox
       env:
-        USERNAME: ${{ steps.email.outputs.username }}
-        DOMAIN: ${{ steps.email.outputs.domain }}
+        USERNAME: ${{ steps.email.outputs.username || secrets.TEMP_EMAIL_USERNAME }}
+        DOMAIN: ${{ steps.email.outputs.domain || secrets.TEMP_EMAIL_DOMAIN }}
       run: |
-        python3 << 'EOF'
-        import requests
-        import os
-        import json
+        echo "چک $USERNAME@$DOMAIN"
         
-        username = os.getenv('USERNAME')
-        domain = os.getenv('DOMAIN')
+        # curl ساده
+        RESPONSE=$(curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$USERNAME&domain=$DOMAIN")
+        COUNT=$(echo "$RESPONSE" | jq 'length')
         
-        print(f"🔍 چک کردن {username}@{domain}")
-        
-        # لیست ایمیل‌ها
-        url = f"https://www.1secmail.com/api/v1/?action=getMessages&login={username}&domain={domain}"
-        response = requests.get(url)
-        
-        if response.status_code != 200:
-            print(f"❌ خطا API: {response.status_code}")
-            exit(1)
-        
-        messages = response.json()
-        print(f"تعداد ایمیل: {len(messages)}")
-        
-        if messages:
-            print("✅ ایمیل‌های موجود:")
-            # اولین ایمیل
-            msg_id = messages[0]['id']
-            detail_url = f"https://www.1secmail.com/api/v1/?action=readMessage&login={username}&domain={domain}&id={msg_id}"
-            details = requests.get(detail_url).json()
-            
-            print(f"از: {details.get('from', 'N/A')}")
-            print(f"موضوع: {details.get('subject', 'N/A')}")
-            print(f"تاریخ: {details.get('date', 'N/A')}")
-            
-            with open('email_content.txt', 'w') as f:
-                f.write(details.get('textBody', ''))
-            print("📄 محتوای ایمیل در email_content.txt")
-            
-            print("status=success" >> os.environ['GITHUB_OUTPUT'])
-        else:
-            print("📭 inbox خالی - منتظر ایمیل باش!")
-            print("status=empty" >> os.environ['GITHUB_OUTPUT'])
-        EOF
-
-    - name: 📤 نتیجه نهایی
-      run: |
-        echo "✅ تمام شد!"
-        echo "ایمیل: ${{ steps.email.outputs.email }}"
-        echo "وضعیت: ${{ steps.inbox.outputs.status }}"
-        
-        # آپلود محتوای ایمیل (اختیاری)
-        if [ -f email_content.txt ]; then
-          echo "محتوای ایمیل:"
-          cat email_content.txt
+        echo "تعداد ایمیل: $COUNT"
+        if [ "$COUNT" -gt 0 ]; then
+          echo "✅ ایمیل هست!"
+          echo "$RESPONSE"
+        else
+          echo "📭 خالی"
         fi
+        echo "status=done" >> $GITHUB_OUTPUT
+
+    - name: 🎉 نتیجه
+      run: |
+        echo "ایمیل: ${{ steps.email.outputs.email }}"
+        echo "تمام ✅"
