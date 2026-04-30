@@ -1,0 +1,31 @@
+name: Temp Email Generator
+on: [push]
+
+jobs:
+  get-email:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Get Persistent Temp Email
+      id: email
+      run: |
+        # استفاده از secret ثابت (هر بار یکسان)
+        USERNAME="${{ secrets.TEMP_EMAIL_USERNAME }}"
+        DOMAIN="${{ secrets.TEMP_EMAIL_DOMAIN }}"
+        EMAIL="${USERNAME}@${DOMAIN}"
+        
+        echo "email=${EMAIL}" >> $GITHUB_OUTPUT
+        echo "username=${USERNAME}" >> $GITHUB_OUTPUT
+        echo "domain=${DOMAIN}" >> $GITHUB_OUTPUT
+        
+    - name: Check Inbox
+      run: |
+        USERNAME="${{ steps.email.outputs.username }}"
+        DOMAIN="${{ steps.email.outputs.domain }}"
+        
+        # چک کردن ایمیل‌های جدید
+        curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$USERNAME&domain=$DOMAIN"
+        
+    - name: Print Email
+      run: echo "ایمیل ثابت: ${{ steps.email.outputs.email }}"
