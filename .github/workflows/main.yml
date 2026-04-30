@@ -1,44 +1,40 @@
-name: Temp Email Monitor
+name: 🆓 Persistent Temp Email
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:  # دستی هم اجرا کنی
+  workflow_dispatch:
 
 jobs:
-  check-email:
+  email-checker:
     runs-on: ubuntu-latest
     steps:
-    - name: 📧 دریافت ایمیل ثابت
+    - name: 📧 دریافت ایمیل موقت (هر بار ثابت)
       id: email
       run: |
-        USERNAME="${{ secrets.TEMP_EMAIL_USERNAME }}"
-        DOMAIN="${{ secrets.TEMP_EMAIL_DOMAIN }}"
-        EMAIL="${USERNAME}@${DOMAIN}"
-        echo "email=${EMAIL}" >> $GITHUB_OUTPUT
-        echo "username=${USERNAME}" >> $GITHUB_OUTPUT
-        echo "domain=${DOMAIN}" >> $GITHUB_OUTPUT
+        # Guerrilla Mail - بدون block!
+        RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" \
+          'https://api.guerrillamail.com/ajax.php?f=get_email_address')
+        
+        EMAIL=$(echo "$RESPONSE" | grep -o '"email_addr":"[^"]*' | cut -d'"' -f4)
+        SID=$(echo "$RESPONSE" | grep -o '"sid_token":"[^"]*' | cut -d'"' -f4)
+        
+        echo "email=$EMAIL" >> $GITHUB_OUTPUT
+        echo "sid=$SID" >> $GITHUB_OUTPUT
+        
+        echo "::notice title=E-mail:: $EMAIL"
+        echo "::notice title=SID:: $SID (کپی کن برای secret)"
 
     - name: 📥 چک کردن inbox
-      id: inbox
-      env:
-        USERNAME: ${{ steps.email.outputs.username }}
-        DOMAIN: ${{ steps.email.outputs.domain }}
       run: |
-        # دریافت لیست ایمیل‌ها
-        MESSAGES=$(curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$USERNAME&domain=$DOMAIN")
+        SID="${{ steps.email.outputs.sid }}"
+        echo "🔍 چک با SID: $SID"
         
-        if [ "$MESSAGES" != "[]" ]; then
-          echo "✅ ایمیل جدید پیدا شد!"
-          # جزئیات اولین ایمیل جدید
-          MSG_ID=$(echo $MESSAGES | jq -r '.[0].id')
-          curl -s "https://www.1secmail.com/api/v1/?action=readMessage&login=$USERNAME&domain=$DOMAIN&id=$MSG_ID"
-          echo "status=success" >> $GITHUB_OUTPUT
-        else
-          echo "📭 inbox خالی"
-          echo "status=empty" >> $GITHUB_OUTPUT
-        fi
+        # لیست ایمیل‌ها
+        curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&offset=0&sid_token=$SID"
+        
+        # تمام ایمیل‌ها
+        curl -s "https://api.guerrillamail.com/ajax.php?f=fetch_email&offset=0&sid_token=$SID"
 
-    - name: 📤 نمایش نتیجه
+    - name: 📤 نمایش نهایی
       run: |
-        echo "ایمیل: ${{ steps.email.outputs.email }}"
-        echo "وضعیت: ${{ steps.inbox.outputs.status }}"
+        echo "✅ ایمیل: ${{ steps.email.outputs.email }}"
+        echo "🔗 تست: https://www.guerrillamail.com/"
