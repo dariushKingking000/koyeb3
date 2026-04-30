@@ -1,49 +1,34 @@
-name: ✅ Fixed Email Checker
+name: 🎯 Temp Email Fixed
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  check-email:
+  email:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: 📦 jq نصب
-      run: sudo apt-get update && sudo apt-get install -y jq
-
-    - name: 📧 ایمیل
+    - name: 📧 ایمیل دائمی
       id: email
       env:
-        USERNAME: ${{ secrets.TEMP_EMAIL_USERNAME }}
-        DOMAIN: ${{ secrets.TEMP_EMAIL_DOMAIN }}
+        SID: ${{ secrets.GUERRILLA_SID }}
       run: |
-        EMAIL="$USERNAME@$DOMAIN"
+        RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" \
+          "https://api.guerrillamail.com/ajax.php?f=get_email_address&sid_token=$SID")
+        
+        EMAIL=$(echo "$RESPONSE" | grep -o '"email_addr":"[^"]*' | cut -d'"' -f4)
         echo "email=$EMAIL" >> $GITHUB_OUTPUT
-        echo "ایمیل: $EMAIL"
+        echo "✅ $EMAIL"
 
-    - name: 📥 چک inbox (ساده)
-      id: inbox
+    - name: 📥 Inbox
       env:
-        USERNAME: ${{ steps.email.outputs.username || secrets.TEMP_EMAIL_USERNAME }}
-        DOMAIN: ${{ steps.email.outputs.domain || secrets.TEMP_EMAIL_DOMAIN }}
+        SID: ${{ secrets.GUERRILLA_SID }}
       run: |
-        echo "چک $USERNAME@$DOMAIN"
-        
-        # curl ساده
-        RESPONSE=$(curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$USERNAME&domain=$DOMAIN")
-        COUNT=$(echo "$RESPONSE" | jq 'length')
-        
-        echo "تعداد ایمیل: $COUNT"
-        if [ "$COUNT" -gt 0 ]; then
-          echo "✅ ایمیل هست!"
-          echo "$RESPONSE"
-        else
-          echo "📭 خالی"
-        fi
-        echo "status=done" >> $GITHUB_OUTPUT
+        echo "چک inbox..."
+        # تعداد ایمیل
+        curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID"
+        # ایمیل‌ها
+        curl -s "https://api.guerrillamail.com/ajax.php?f=fetch_email&sid_token=$SID" | \
+        grep -E '"mail_id|:from|:subject' || echo "📭 خالی"
 
-    - name: 🎉 نتیجه
-      run: |
-        echo "ایمیل: ${{ steps.email.outputs.email }}"
-        echo "تمام ✅"
+    - name: 🎉 OK
+      run: echo "ایمیل ثابت: ${{ steps.email.outputs.email }}"
