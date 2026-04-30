@@ -1,21 +1,20 @@
-name: 🎯 Temp Email Fixed
-on:
-  push:
+name: 📧 Persistent Email + Inbox
+on: 
   workflow_dispatch:
+  schedule: 
+    - cron: '* * * * *'  # هر دقیقه
 
 jobs:
-  email:
+  check:
     runs-on: ubuntu-latest
     steps:
-    - name: 📧 ایمیل دائمی
+    - name: 📧 ایمیل
       id: email
       env:
         SID: ${{ secrets.GUERRILLA_SID }}
       run: |
-        RESPONSE=$(curl -s -H "User-Agent: Mozilla/5.0" \
-          "https://api.guerrillamail.com/ajax.php?f=get_email_address&sid_token=$SID")
-        
-        EMAIL=$(echo "$RESPONSE" | grep -o '"email_addr":"[^"]*' | cut -d'"' -f4)
+        EMAIL=$(curl -s "https://api.guerrillamail.com/ajax.php?f=get_email_address&sid_token=$SID" | \
+               grep -o '"email_addr":"[^"]*' | cut -d'"' -f4)
         echo "email=$EMAIL" >> $GITHUB_OUTPUT
         echo "✅ $EMAIL"
 
@@ -23,12 +22,13 @@ jobs:
       env:
         SID: ${{ secrets.GUERRILLA_SID }}
       run: |
-        echo "چک inbox..."
-        # تعداد ایمیل
-        curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID"
-        # ایمیل‌ها
-        curl -s "https://api.guerrillamail.com/ajax.php?f=fetch_email&sid_token=$SID" | \
-        grep -E '"mail_id|:from|:subject' || echo "📭 خالی"
-
-    - name: 🎉 OK
-      run: echo "ایمیل ثابت: ${{ steps.email.outputs.email }}"
+        COUNT=$(curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID" | \
+                grep -o '"id":[0-9]*' | wc -l)
+        echo "تعداد ایمیل: $COUNT"
+        
+        if [ "$COUNT" -gt 0 ]; then
+          echo "✅ جدید!"
+          MAIL_ID=$(curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID" | \
+                    grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          curl -s "https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id=$MAIL_ID&sid_token=$SID"
+        fi
