@@ -1,31 +1,44 @@
-name: Temp Email Generator
-on: [push]
+name: Temp Email Monitor
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # دستی هم اجرا کنی
 
 jobs:
-  get-email:
+  check-email:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Get Persistent Temp Email
+    - name: 📧 دریافت ایمیل ثابت
       id: email
       run: |
-        # استفاده از secret ثابت (هر بار یکسان)
         USERNAME="${{ secrets.TEMP_EMAIL_USERNAME }}"
         DOMAIN="${{ secrets.TEMP_EMAIL_DOMAIN }}"
         EMAIL="${USERNAME}@${DOMAIN}"
-        
         echo "email=${EMAIL}" >> $GITHUB_OUTPUT
         echo "username=${USERNAME}" >> $GITHUB_OUTPUT
         echo "domain=${DOMAIN}" >> $GITHUB_OUTPUT
-        
-    - name: Check Inbox
+
+    - name: 📥 چک کردن inbox
+      id: inbox
+      env:
+        USERNAME: ${{ steps.email.outputs.username }}
+        DOMAIN: ${{ steps.email.outputs.domain }}
       run: |
-        USERNAME="${{ steps.email.outputs.username }}"
-        DOMAIN="${{ steps.email.outputs.domain }}"
+        # دریافت لیست ایمیل‌ها
+        MESSAGES=$(curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$USERNAME&domain=$DOMAIN")
         
-        # چک کردن ایمیل‌های جدید
-        curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$USERNAME&domain=$DOMAIN"
-        
-    - name: Print Email
-      run: echo "ایمیل ثابت: ${{ steps.email.outputs.email }}"
+        if [ "$MESSAGES" != "[]" ]; then
+          echo "✅ ایمیل جدید پیدا شد!"
+          # جزئیات اولین ایمیل جدید
+          MSG_ID=$(echo $MESSAGES | jq -r '.[0].id')
+          curl -s "https://www.1secmail.com/api/v1/?action=readMessage&login=$USERNAME&domain=$DOMAIN&id=$MSG_ID"
+          echo "status=success" >> $GITHUB_OUTPUT
+        else
+          echo "📭 inbox خالی"
+          echo "status=empty" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 📤 نمایش نتیجه
+      run: |
+        echo "ایمیل: ${{ steps.email.outputs.email }}"
+        echo "وضعیت: ${{ steps.inbox.outputs.status }}"
