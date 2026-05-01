@@ -1,46 +1,36 @@
-name: 🔘 Manual Email Check
+name: Check Temp Mail Inbox
+
 on:
-  workflow_dispatch:  # فقط دکمه دستی!
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'  # هر 5 دقیقه
 
 jobs:
-  check:
+  check-inbox:
     runs-on: ubuntu-latest
     steps:
-    - name: 📧 Guerrilla ایمیل
-      id: email
-      env:
-        SID: ${{ secrets.GUERRILLA_SID }}
-      run: |
-        EMAIL=$(curl -s "https://api.guerrillamail.com/ajax.php?f=get_email_address&sid_token=$SID" | grep -o '"email_addr":"[^"]*' | cut -d'"' -f4)
-        echo "::notice title=ایمیل ثابت:: $EMAIL"
-        echo "email=$EMAIL" >> $GITHUB_OUTPUT
-        echo "📧 $EMAIL"
-
-    - name: 📥 Inbox Status
-      env:
-        SID: ${{ secrets.GUERRILLA_SID }}
-      run: |
-        COUNT=$(curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID" | grep -o '"id":[0-9]*' | wc -l)
-        
-        if [ "$COUNT" -gt 0 ]; then
-          echo "🚨 $COUNT ایمیل جدید!"
-          echo "::warning:: ایمیل جدید رسید!"
+      - name: Get temp email
+        id: email
+        run: |
+          curl -s "https://www.1secmail.com/api/v1/?action=genRandomMailbox&count=1" | jq -r '.[0]' > email.txt
+          echo "email=$(cat email.txt)" >> $GITHUB_OUTPUT
+          echo "email=$(cat email.txt)" >> $GITHUB_ENV
+      
+      - name: Check inbox
+        run: |
+          EMAIL="${{ steps.email.outputs.email }}"
+          DOMAIN=$(echo $EMAIL | cut -d'@' -f2)
+          LOGIN=$(echo $EMAIL | cut -d'@' -f1)
           
-          # آخرین ایمیل
-          MAIL_ID=$(curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
-          DETAILS=$(curl -s "https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id=$MAIL_ID&sid_token=$SID")
+          echo "Checking inbox for: $EMAIL"
+          sleep 10  # صبر برای دریافت ایمیل
           
-          FROM=$(echo "$DETAILS" | grep -o '"mail_from":"[^"]*' | head -1 | cut -d'"' -f4)
-          SUBJECT=$(echo "$DETAILS" | grep -o '"mail_subject":"[^"]*' | head -1 | cut -d'"' -f4)
+          curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$LOGIN&domain=$DOMAIN" | jq .
           
-          echo "از: ${FROM:-?}"
-          echo "عنوان: ${SUBJECT:-بدون عنوان}"
-        else
-          echo "📭 Inbox خالی"
-          echo "::notice:: منتظر ایمیل..."
-        fi
-
-    - name: 🔗 لینک‌ها
-      run: |
-        echo "🌐 Guerrilla: https://www.guerrillamail.com/"
-        echo "📧 ایمیل: ${{ steps.email.outputs.email }}"
+          MSG_ID=$(curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$LOGIN&domain=$DOMAIN" | jq -r '.[0].id // empty')
+          if [ ! -z "$MSG_ID" ]; then
+            echo "New email found! ID: $MSG_ID"
+            curl -s "https://www.1secmail.com/api/v1/?action=readMessage&login=$LOGIN&domain=$DOMAIN&id=$MSG_ID" | jq .
+          else
+            echo "No new emails"
+          fi
