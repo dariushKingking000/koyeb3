@@ -1,34 +1,60 @@
-name: 📧 Persistent Email + Inbox
-on: 
+name: 📧 Temp-Mail.org API
+on:
   workflow_dispatch:
-  schedule: 
-    - cron: '* * * * *'  # هر دقیقه
+  schedule:
+    - cron: '*/2 * * * *'
 
 jobs:
-  check:
+  temp-mail:
     runs-on: ubuntu-latest
     steps:
-    - name: 📧 ایمیل
+    - name: 📧 ایمیل تصادفی
       id: email
-      env:
-        SID: ${{ secrets.GUERRILLA_SID }}
       run: |
-        EMAIL=$(curl -s "https://api.guerrillamail.com/ajax.php?f=get_email_address&sid_token=$SID" | \
-               grep -o '"email_addr":"[^"]*' | cut -d'"' -f4)
+        # username تصادفی + domain
+        USERNAME=$(openssl rand -hex 8)
+        DOMAIN="tempmail.lol"
+        EMAIL="$USERNAME@$DOMAIN"
         echo "email=$EMAIL" >> $GITHUB_OUTPUT
         echo "✅ $EMAIL"
 
-    - name: 📥 Inbox
+    - name: 📥 چک inbox
+      id: inbox
       env:
-        SID: ${{ secrets.GUERRILLA_SID }}
+        EMAIL: ${{ steps.email.outputs.email }}
       run: |
-        COUNT=$(curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID" | \
-                grep -o '"id":[0-9]*' | wc -l)
-        echo "تعداد ایمیل: $COUNT"
+        USERNAME=${EMAIL%@*}
+        DOMAIN=${EMAIL#*@}
         
-        if [ "$COUNT" -gt 0 ]; then
-          echo "✅ جدید!"
-          MAIL_ID=$(curl -s "https://api.guerrillamail.com/ajax.php?f=check_email&sid_token=$SID" | \
-                    grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
-          curl -s "https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id=$MAIL_ID&sid_token=$SID"
+        echo "چک $EMAIL..."
+        
+        # لیست ایمیل‌ها
+        MESSAGES=$(curl -s "https://api.temp-mail.org/request/domains/format/json")
+        DOMAIN_LIST=$(curl -s "https://api.temp-mail.org/request/domains/format/json" | jq -r '.[].domain')
+        echo "دامنه‌ها: $DOMAIN_LIST"
+        
+        # ایمیل‌های من
+        RESPONSE=$(curl -s "https://api.temp-mail.org/request/mail/id/$USERNAME/format/json")
+        
+        if [ "$RESPONSE" != "[]" ] && [ -n "$RESPONSE" ]; then
+          COUNT=$(echo "$RESPONSE" | jq length)
+          echo "🚨 $COUNT ایمیل جدید!"
+          
+          # آخرین ایمیل
+          LAST=$(echo "$RESPONSE" | jq '.[0]')
+          FROM=$(echo "$LAST" | jq -r '.mail_from')
+          SUBJECT=$(echo "$LAST" | jq -r '.mail_subject')
+          
+          echo "از: $FROM"
+          echo "موضوع: $SUBJECT"
+          echo "status=new" >> $GITHUB_OUTPUT
+        else
+          echo "📭 خالی"
+          echo "status=empty" >> $GITHUB_OUTPUT
         fi
+
+    - name: 🎯 Alert
+      if: steps.inbox.outputs.status == 'new'
+      run: |
+        echo "::warning:: ایمیل جدید به ${{ steps.email.outputs.email }}!"
+        echo "چک: https://temp-mail.org/en/"
