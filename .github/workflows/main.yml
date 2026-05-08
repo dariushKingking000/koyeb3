@@ -1,10 +1,11 @@
 name: Create Workflow
 on: [workflow_dispatch]
+
 jobs:
   create:
     runs-on: ubuntu-latest
     steps:
-    - name: 🔧 Create + Full Logs
+    - name: 🔧 Create Pipedream Workflow + Full Logs
       env:
         CLIENT_ID: ${{ secrets.PIPEDREAM_CLIENT_ID }}
         CLIENT_SECRET: ${{ secrets.PIPEDREAM_CLIENT_SECRET }}
@@ -14,19 +15,35 @@ jobs:
         
         echo "=== Get Token ==="
         TOKEN_RESPONSE=$(curl -s -X POST https://api.pipedream.com/v1/oauth/token \
-          -u "$CLIENT_ID:$CLIENT_SECRET" -d grant_type=client_credentials)
+          -u "$CLIENT_ID:$CLIENT_SECRET" \
+          -d 'grant_type=client_credentials')
         echo "$TOKEN_RESPONSE"
+        
+        if [ "$(echo $TOKEN_RESPONSE | jq -r .access_token)" = "null" ]; then
+          echo "❌ Token failed!"
+          echo "$TOKEN_RESPONSE" | jq .
+          exit 1
+        fi
+        
         TOKEN=$(echo $TOKEN_RESPONSE | jq -r .access_token)
-        echo "TOKEN: ${TOKEN:0:15}..."
+        echo "✅ TOKEN: ${TOKEN:0:15}..."
         
         echo ""
         echo "=== CREATE WORKFLOW ==="
+        WORKFLOW_NAME="Auto-Test-$(date +%s)"
         CREATE_RESPONSE=$(curl -s -X POST "https://api.pipedream.com/v1/workflows" \
           -H "Authorization: Bearer $TOKEN" \
           -H "Content-Type: application/json" \
-          -d '{"name": "Auto-Test-'"$(date +%s)"'"}')
+          -d "{\"name\": \"$WORKFLOW_NAME\"}")
         echo "$CREATE_RESPONSE"
         
-        WORKFLOW_ID=$(echo $CREATE_RESPONSE | jq -r .data.id)
-        echo ""
-        echo "✅ NEW WORKFLOW ID: $WORKFLOW_ID"
+        if echo "$CREATE_RESPONSE" | jq -e '.data.id' > /dev/null; then
+          WORKFLOW_ID=$(echo $CREATE_RESPONSE | jq -r .data.id)
+          echo ""
+          echo "✅ NEW WORKFLOW ID: $WORKFLOW_ID"
+          echo "🔗 URL: https://pipedream.com/@pipedream/$WORKFLOW_ID"
+        else
+          echo "❌ Workflow creation failed!"
+          echo "$CREATE_RESPONSE" | jq .
+          exit 1
+        fi
