@@ -1,47 +1,10 @@
-name: 🌟 Pipedream API Fixed
-on: 
-  push:
-  workflow_dispatch:
-
+name: Pipedream Test
+on: [workflow_dispatch]
 jobs:
-  api:
+  test:
     runs-on: ubuntu-latest
     steps:
-    - name: ⏳ Setup
-      run: sleep 30
-
-    - name: 🔑 Get Token
-      id: token
-      env:
-        CLIENT_ID: ${{ secrets.PIPEDREAM_CLIENT_ID }}
-        CLIENT_SECRET: ${{ secrets.PIPEDREAM_CLIENT_SECRET }}
-      run: |
-        TOKEN=$(curl -s -X POST https://api.pipedream.com/v1/oauth/token \
-          -u "${CLIENT_ID}:${CLIENT_SECRET}" \
-          -d "grant_type=client_credentials" | jq -r '.access_token')
-        echo "token=$TOKEN" >> $GITHUB_OUTPUT
-        echo "✅ Token OK"
-
-    - name: 📊 API Calls
-      env:
-        TOKEN: ${{ steps.token.outputs.token }}
-      run: |
-        echo "=== 🏠 User Info ==="
-        curl -s -H "Authorization: Bearer $TOKEN" \
-          https://api.pipedream.com/v1/users/me | jq '{id, email, name}'
-        
-        echo "=== 📦 Sources (0 = OK) ==="
-        SOURCES=$(curl -s -H "Authorization: Bearer $TOKEN" \
-          https://api.pipedream.com/v1/sources | jq '.data | length')
-        echo "تعداد Sources: $SOURCES"
-        
-        if [ "$SOURCES" -gt 0 ]; then
-          echo "لیست:"
-          curl -s -H "Authorization: Bearer $TOKEN" \
-            https://api.pipedream.com/v1/sources \
-            | jq -r '.data[] | "\(.name) (\(.status))"'
-        else
-          echo "✅ حساب جدید - Source نداره (عادیه)"
+    - run: echo "✅ Workflow ساخته شد!"
         fi
 
         echo "=== ✅ ALL DONE ==="
