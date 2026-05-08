@@ -1,60 +1,30 @@
-name: 📧 Temp-Mail.org API
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '*/2 * * * *'
-
+name: Create Workflow
+on: [workflow_dispatch]
 jobs:
-  temp-mail:
+  create:
     runs-on: ubuntu-latest
     steps:
-    - name: 📧 ایمیل تصادفی
-      id: email
-      run: |
-        # username تصادفی + domain
-        USERNAME=$(openssl rand -hex 8)
-        DOMAIN="tempmail.lol"
-        EMAIL="$USERNAME@$DOMAIN"
-        echo "email=$EMAIL" >> $GITHUB_OUTPUT
-        echo "✅ $EMAIL"
-
-    - name: 📥 چک inbox
-      id: inbox
-      env:
-        EMAIL: ${{ steps.email.outputs.email }}
-      run: |
-        USERNAME=${EMAIL%@*}
-        DOMAIN=${EMAIL#*@}
-        
-        echo "چک $EMAIL..."
-        
-        # لیست ایمیل‌ها
-        MESSAGES=$(curl -s "https://api.temp-mail.org/request/domains/format/json")
-        DOMAIN_LIST=$(curl -s "https://api.temp-mail.org/request/domains/format/json" | jq -r '.[].domain')
-        echo "دامنه‌ها: $DOMAIN_LIST"
-        
-        # ایمیل‌های من
-        RESPONSE=$(curl -s "https://api.temp-mail.org/request/mail/id/$USERNAME/format/json")
-        
-        if [ "$RESPONSE" != "[]" ] && [ -n "$RESPONSE" ]; then
-          COUNT=$(echo "$RESPONSE" | jq length)
-          echo "🚨 $COUNT ایمیل جدید!"
+      - uses: actions/checkout@v4
+      - name: 🔧 Create Pipedream Workflow
+        env:
+          CLIENT_ID: ${{ secrets.PIPEDREAM_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.PIPEDREAM_CLIENT_SECRET }}
+        run: |
+          echo "=== Get Token ==="
+          TOKEN_RESPONSE=$(curl -s -X POST https://api.pipedream.com/v1/oauth/token \
+            -u "$CLIENT_ID:$CLIENT_SECRET" \
+            -d 'grant_type=client_credentials')
           
-          # آخرین ایمیل
-          LAST=$(echo "$RESPONSE" | jq '.[0]')
-          FROM=$(echo "$LAST" | jq -r '.mail_from')
-          SUBJECT=$(echo "$LAST" | jq -r '.mail_subject')
+          TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+          echo "TOKEN: ${TOKEN:0:15}..."
           
-          echo "از: $FROM"
-          echo "موضوع: $SUBJECT"
-          echo "status=new" >> $GITHUB_OUTPUT
-        else
-          echo "📭 خالی"
-          echo "status=empty" >> $GITHUB_OUTPUT
-        fi
-
-    - name: 🎯 Alert
-      if: steps.inbox.outputs.status == 'new'
-      run: |
-        echo "::warning:: ایمیل جدید به ${{ steps.email.outputs.email }}!"
-        echo "چک: https://temp-mail.org/en/"
+          echo "=== CREATE WORKFLOW ==="
+          WORKFLOW_NAME="Auto-Test-$(date +%s)"
+          CREATE_RESPONSE=$(curl -s -X POST "https://api.pipedream.com/v1/workflows" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\": \"$WORKFLOW_NAME\"}")
+          
+          WORKFLOW_ID=$(echo "$CREATE_RESPONSE" | jq -r '.data.id')
+          echo "✅ WORKFLOW ID: $WORKFLOW_ID"
+          echo "🔗 https://pipedream.com/@pipedream/$WORKFLOW_ID"
