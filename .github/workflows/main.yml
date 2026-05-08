@@ -4,22 +4,34 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - name: 🔗 OAuth + API Call
+    - name: 🔗 OAuth + API Logs
       env:
         CLIENT_ID: ${{ secrets.PIPEDREAM_CLIENT_ID }}
         CLIENT_SECRET: ${{ secrets.PIPEDREAM_CLIENT_SECRET }}
       run: |
-        # OAuth Token
-        TOKEN=$(curl -s \
+        echo "😴 ۳۰s صبر..."
+        sleep 30
+        
+        echo "=== 📋 CLIENT INFO ==="
+        echo "ID: ${CLIENT_ID:0:12}... (${#CLIENT_ID} chars)"
+        echo "SECRET: ${CLIENT_SECRET:0:12}... (${#CLIENT_SECRET} chars)"
+        
+        echo "=== 🔑 REQUEST TOKEN ==="
+        TOKEN_RESPONSE=$(curl -s -w "\nSTATUS: %{http_code}" \
           -X POST https://api.pipedream.com/v1/oauth/token \
           -u "${CLIENT_ID}:${CLIENT_SECRET}" \
-          -d "grant_type=client_credentials" \
-          | jq -r '.access_token')
+          -d "grant_type=client_credentials")
+        echo "$TOKEN_RESPONSE"
         
-        echo "✅ Token دریافت شد: ${TOKEN:0:20}..."
-        
-        # تست API با توکن
-        curl -s -H "Authorization: Bearer $TOKEN" \
-          https://api.pipedream.com/v1/sources \
-          | jq '.data | length' \
-          | xargs echo "📊 تعداد Sources: "
+        TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
+        if [ -n "$TOKEN" ]; then
+          echo "✅ Token: ${TOKEN:0:20}..."
+          
+          echo "=== 📊 API SOURCES ==="
+          curl -s -H "Authorization: Bearer $TOKEN" \
+            https://api.pipedream.com/v1/sources \
+            | jq '.data[] | {id, name, status}'
+        else
+          echo "❌ Token نامعتبر!"
+          exit 1
+        fi
