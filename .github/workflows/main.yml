@@ -4,15 +4,29 @@ jobs:
   create:
     runs-on: ubuntu-latest
     steps:
-    - name: Create
+    - name: 🔧 Create + Full Logs
       env:
         CLIENT_ID: ${{ secrets.PIPEDREAM_CLIENT_ID }}
         CLIENT_SECRET: ${{ secrets.PIPEDREAM_CLIENT_SECRET }}
       run: |
+        echo "=== 30s Delay ==="
         sleep 30
-        TOKEN=$(curl -s -X POST https://api.pipedream.com/v1/oauth/token -u "$CLIENT_ID:$CLIENT_SECRET" -d grant_type=client_credentials | jq -r .access_token)
         
-        curl -X POST "https://api.pipedream.com/v1/workflows" \
+        echo "=== Get Token ==="
+        TOKEN_RESPONSE=$(curl -s -X POST https://api.pipedream.com/v1/oauth/token \
+          -u "$CLIENT_ID:$CLIENT_SECRET" -d grant_type=client_credentials)
+        echo "$TOKEN_RESPONSE"
+        TOKEN=$(echo $TOKEN_RESPONSE | jq -r .access_token)
+        echo "TOKEN: ${TOKEN:0:15}..."
+        
+        echo ""
+        echo "=== CREATE WORKFLOW ==="
+        CREATE_RESPONSE=$(curl -s -X POST "https://api.pipedream.com/v1/workflows" \
           -H "Authorization: Bearer $TOKEN" \
           -H "Content-Type: application/json" \
-          -d '{"name": "Test-'"$(date +%s)"'"}' | jq .
+          -d '{"name": "Auto-Test-'"$(date +%s)"'"}')
+        echo "$CREATE_RESPONSE"
+        
+        WORKFLOW_ID=$(echo $CREATE_RESPONSE | jq -r .data.id)
+        echo ""
+        echo "✅ NEW WORKFLOW ID: $WORKFLOW_ID"
