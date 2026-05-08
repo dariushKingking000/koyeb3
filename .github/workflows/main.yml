@@ -1,10 +1,10 @@
-name: Pipedream OAuth & API Test
+name: Pipedream OAuth Fix
 on: [push]
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - name: 🔗 OAuth + API Logs
+    - name: 🔍 Check & Fix Secrets
       env:
         CLIENT_ID: ${{ secrets.PIPEDREAM_CLIENT_ID }}
         CLIENT_SECRET: ${{ secrets.PIPEDREAM_CLIENT_SECRET }}
@@ -12,26 +12,18 @@ jobs:
         echo "😴 ۳۰s صبر..."
         sleep 30
         
-        echo "=== 📋 CLIENT INFO ==="
-        echo "ID: ${CLIENT_ID:0:12}... (${#CLIENT_ID} chars)"
-        echo "SECRET: ${CLIENT_SECRET:0:12}... (${#CLIENT_SECRET} chars)"
-        
-        echo "=== 🔑 REQUEST TOKEN ==="
-        TOKEN_RESPONSE=$(curl -s -w "\nSTATUS: %{http_code}" \
-          -X POST https://api.pipedream.com/v1/oauth/token \
-          -u "${CLIENT_ID}:${CLIENT_SECRET}" \
-          -d "grant_type=client_credentials")
-        echo "$TOKEN_RESPONSE"
-        
-        TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token // empty')
-        if [ -n "$TOKEN" ]; then
-          echo "✅ Token: ${TOKEN:0:20}..."
-          
-          echo "=== 📊 API SOURCES ==="
-          curl -s -H "Authorization: Bearer $TOKEN" \
-            https://api.pipedream.com/v1/sources \
-            | jq '.data[] | {id, name, status}'
-        else
-          echo "❌ Token نامعتبر!"
+        echo "=== 📋 SECRETS CHECK ==="
+        if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
+          echo "❌ Secrets خالی! برو Settings > Secrets and variables > Actions"
+          echo "اضافه کن: PIPEDREAM_CLIENT_ID و PIPEDREAM_CLIENT_SECRET"
           exit 1
         fi
+        
+        echo "✅ ID: ${CLIENT_ID:0:12}... (${#CLIENT_ID} chars)"
+        echo "✅ SECRET: ${CLIENT_SECRET:0:12}... (${#CLIENT_SECRET} chars)"
+        
+        echo "=== 🔑 SAFE TOKEN REQUEST ==="
+        curl -s -i -w "\n=== STATUS: %{http_code} ===" \
+          -X POST https://api.pipedream.com/v1/oauth/token \
+          -u "${CLIENT_ID}:${CLIENT_SECRET}" \
+          -d "grant_type=client_credentials"
