@@ -1,36 +1,25 @@
-name: Check Temp Mail Inbox
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '*/5 * * * *'  # هر 5 دقیقه
-
+name: Pipedream OAuth & API Test
+on: [push]
 jobs:
-  check-inbox:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Get temp email
-        id: email
-        run: |
-          curl -s "https://www.1secmail.com/api/v1/?action=genRandomMailbox&count=1" | jq -r '.[0]' > email.txt
-          echo "email=$(cat email.txt)" >> $GITHUB_OUTPUT
-          echo "email=$(cat email.txt)" >> $GITHUB_ENV
-      
-      - name: Check inbox
-        run: |
-          EMAIL="${{ steps.email.outputs.email }}"
-          DOMAIN=$(echo $EMAIL | cut -d'@' -f2)
-          LOGIN=$(echo $EMAIL | cut -d'@' -f1)
-          
-          echo "Checking inbox for: $EMAIL"
-          sleep 10  # صبر برای دریافت ایمیل
-          
-          curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$LOGIN&domain=$DOMAIN" | jq .
-          
-          MSG_ID=$(curl -s "https://www.1secmail.com/api/v1/?action=getMessages&login=$LOGIN&domain=$DOMAIN" | jq -r '.[0].id // empty')
-          if [ ! -z "$MSG_ID" ]; then
-            echo "New email found! ID: $MSG_ID"
-            curl -s "https://www.1secmail.com/api/v1/?action=readMessage&login=$LOGIN&domain=$DOMAIN&id=$MSG_ID" | jq .
-          else
-            echo "No new emails"
-          fi
+    - name: 🔗 OAuth + API Call
+      env:
+        CLIENT_ID: ${{ secrets.PIPEDREAM_CLIENT_ID }}
+        CLIENT_SECRET: ${{ secrets.PIPEDREAM_CLIENT_SECRET }}
+      run: |
+        # OAuth Token
+        TOKEN=$(curl -s \
+          -X POST https://api.pipedream.com/v1/oauth/token \
+          -u "${CLIENT_ID}:${CLIENT_SECRET}" \
+          -d "grant_type=client_credentials" \
+          | jq -r '.access_token')
+        
+        echo "✅ Token دریافت شد: ${TOKEN:0:20}..."
+        
+        # تست API با توکن
+        curl -s -H "Authorization: Bearer $TOKEN" \
+          https://api.pipedream.com/v1/sources \
+          | jq '.data | length' \
+          | xargs echo "📊 تعداد Sources: "
