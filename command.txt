@@ -1,1 +1,4 @@
-click 1080,259
+click 1043,292
+click  762,257
+type mdelgmdf
+click 762,257
