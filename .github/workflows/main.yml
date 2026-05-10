@@ -1,36 +1,10 @@
-name: Setup Chromium
-
-on: [push, pull_request]
+# .github/workflows/main.yml
+name: Manual Trigger
+on:
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          
-      - name: Download Chromium
-        run: |
-          mkdir -p bin/chromium
-          curl -L -o bin/chromium/chromium.zip \
-            https://playwright.azureedge.net/builds/chromium/1217/chromium-win64.zip
-          unzip -q bin/chromium/chromium.zip -d bin/chromium/
-          chmod +x bin/chromium/chrome-linux/chrome
-          
-      - name: Cache Chromium
-        uses: actions/cache@v4
-        with:
-          path: bin/chromium
-          key: chromium-1217-${{ runner.os }}
-          
-      - name: Install Playwright
-        run: npm init -y && npm i playwright@1.42.0
-          
-      - name: Test Chromium
-        run: |
-          export CHROME_BIN=$(pwd)/bin/chromium/chrome-linux/chrome
-          npx playwright test
+      - run: echo "Hello from GitHub Actions!"
