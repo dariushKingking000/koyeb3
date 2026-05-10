@@ -1,0 +1,223 @@
+Services
+Pricing
+Support
+About US
+Sign Up
+Login
+
+
+
+100% Free Domain Names - No Ads
+
+
+
+.
+publicvm.com
+jo3.org
+run.place
+2bd.net
+linkpc.net
+work.gd
+
+
+ 
+
+
+
+
+
+Register your domain completely free for websites, email, FTP servers, and SSL. Unlike other free domain offers, there are no hidden costs or requirements for paid services. You also have full control to customize your domain's name servers.
+
+
+
+
+
+
+Free Services for the Domain Name
+
+
+WordPress Website
+
+
+Start your WordPress Website in minutes. One click installation to start your website. First 6 month for free.
+
+
+
+WordPress Site »
+Dynamic DNS
+
+
+Dynamic IP address got you down? Link the domain name to your dynamic IP address for free and never lose your connection again
+
+
+
+Dynamic DNS »
+Custom Emails
+
+
+Professional Email Addresses Under Your Own Domain.
+POP and IMAP + SMTP Relay.
+Plan starts as free
+
+
+
+Business Emails »
+Free Digital Certificates
+
+
+100% Free SSL Certificates that support wildcard. Issued in Minutes. Valid for 90 days. Scripts for auto renew.
+
+
+
+Free Digital SSL »
+
+
+
+
+
+To Register Paid Domains
+
+
+Find Domains: Over 1000+ TLDs to register
+
+
+
+
+
+
+Find Great Domain Names
+
+
+
+Looking for a great domain name? Browse our Expired & Pending-Delete Domains list to find newly available .com/.net/.org names.
+
+
+
+
+
+
+Easy Dynamic IP Updating
+
+
+
+Keep your hostname pointed to your current IP address by choosing the easiest update method for your setup.
+
+New to Dynamic DNS? Start here: create a free account, add your hostname, then copy your update command or router URL.
+Step 1
+Create a free account
+
+Create your DNS Exit account so you can manage your hostnames and generate update commands.
+
+Create Free Account
+Step 2
+Add your hostname
+
+After you sign in, add the hostname you want to keep updated, then open the Dynamic IP Update page to generate your command.
+
+Login
+Step 3
+Use router, client, or script
+
+After setup, use your update URL in a router, DDNS client, or scheduled task.
+
+https://api.dnsexit.com/dns/ud/?apikey=API-Key&host=host.domain.com
+
+
+
+Learn More..
+
+
+
+
+
+
+
+
+
+Site Map
+
+
+
+
+Domains
+Domain Name Search
+Domain Renewal
+Transfer Domain to Us
+Free Domains
+Free SSL Digital Certificates
+Expired Pending delete Domain Search
+URL / Domain Forwarding
+Domain Parking Page
+	
+
+DNS
+DNS Service
+Dynamic DNS
+Setup DNS
+Uptime Monitoring & DNS Failover
+Dynamic DNS Clients
+	
+
+Emails
+Mail Relay Outbound
+Business Emails
+Mail Backup MX
+Mail Redirection
+Mail Forwarding
+	
+
+Hosting
+Web Hosting
+WordPress Hosting
+VPS Hosting
+
+
+
+Help
+Support
+FAQ ?
+Pricing
+Forgot Passowrd
+About US
+	
+
+Customer Logins
+Client Login
+Webmail Login
+Sign Up
+
+Affiliates
+Resellers
+	
+
+Terms
+Domain registration agreement
+Domain name dispute resolution Policy
+Registrant Rights & Responsibilities
+Abuse Handling Procedures
+Deletion & Auto-Renewal Policies
+Expiration Notification Methods
+Disclosure Request Mechanism
+Privacy Policy
+Terms of Service
+Refund Policy
+	
+
+Knowledge Base
+How does dynamic DNS work?
+Manage your DNS with DNS API
+Digital SSL API
+
+
+
+
+@1998 - 2026 by FreeDomain.One
+A Subsidiary of NetDorm, Inc.
+Tel: (513) 399 0242
+All Rights Reserved	
+	We are an ICANN accredited registrar.
+Serving customers since 1998.
+	Netdorm Inc.
+8190-A Beechmont Ave, Ste 278
+Cincinnati, Ohio, 45255, USA
+;
