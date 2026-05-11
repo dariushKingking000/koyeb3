@@ -1,9 +1,8 @@
 name: Google Screenshot to Repo
 on:
-  push:
-  workflow_dispatch:
+  workflow_dispatch:  # دستی فعال میشه
   repository_dispatch:
-    types: [screenshot]
+    types: [flask-alive]  # از flask trigger میشه
 
 permissions:
   contents: write
@@ -12,69 +11,43 @@ jobs:
   screenshot:
     runs-on: ubuntu-latest
     steps:
-    - name: 🔔 Show Trigger Info
-      run: |
-        echo "🚀 Workflow triggered by: ${{ github.event_name }}"
-        echo "📋 Event details:"
-        echo "  - Action: ${{ github.event.action }}"
-        echo "  - Event type: ${{ github.event_name }}"
-        echo "  - Repo: ${{ github.repository }}"
-        echo "  - SHA: ${{ github.sha }}"
-        echo "⏰ Starting screenshot at $(date)"
-    
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0  # برای git pull
     
-    - name: 🐍 Setup Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
-    - name: 📦 Install Playwright
+    - name: Install Playwright
       run: |
         pip install playwright pillow
         playwright install chromium
     
-    - name: 📸 Taking Google Screenshot
+    - name: 🖥️ Log Flask Status
       run: |
-        echo "🌐 Navigating to Google.com..."
+        echo "✅ Flask از کامپیوتر کاربر فعال شد!"
+        echo "📱 Screenshot Google در حال گرفتن..."
+    
+    - name: Google screenshot
+      run: |
         python -c "
         from playwright.sync_api import sync_playwright
         import datetime
         now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-        print(f'📷 Screenshot filename: google_{now}.png')
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            page.set_viewport_size({'width': 1920, 'height': 1080})
-            print('✅ Loading Google.com...')
-            page.goto('https://www.google.com', wait_until='networkidle')
-            print('📸 Taking screenshot...')
+            page.goto('https://www.google.com')
             page.screenshot(path=f'google_{now}.png', full_page=True)
-            print('✅ Screenshot saved!')
             browser.close()
         "
     
-    - name: 💾 Commit & Push Screenshot
+    - name: Commit & Push
       run: |
-        echo "📂 Checking for new screenshots..."
-        ls -la google_*.png || echo "No new screenshots found"
-        git config user.name "GitHub Action"
+        git config user.name "Flask + GitHub Action"
         git config user.email "action@github.com"
-        
-        # Pull latest changes first
-        echo "🔄 Pulling latest changes..."
-        git pull --rebase origin main
-        
         git add google_*.png
-        if git diff --staged --quiet; then
-          echo "ℹ️  No changes to commit"
-        else
-          git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M) [trigger: ${{ github.event_name }}]"
-          echo "✅ Committed and pushing..."
-          git push origin HEAD:main
-          echo "🎉 Screenshot uploaded successfully!"
-        fi
-        echo "🏁 Workflow completed at $(date)"
+        git commit -m "🌐 Google screenshot - Flask Triggered $(date +%Y-%m-%d_%H-%M)" || exit 0
+        git push
