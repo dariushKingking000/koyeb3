@@ -1,62 +1,69 @@
-name: c.txt Smart Monitor
-on:
-  workflow_dispatch:
-  repository_dispatch:
-    types: [flask-alive]
-
+name: Google Screenshot to Repo
+on: [push]
 permissions:
-  contents: read
-  actions: write
-
+  contents: write
 jobs:
-  monitor:
+  screenshot:
     runs-on: ubuntu-latest
     steps:
-    - name: 🔍 Clone Target Repo
-      run: |
-        git clone https://github.com/dariushKingking000/koyeb3.git target-repo
-        cd target-repo
-        echo "📂 Target repo cloned: $(ls -la)"
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: 🔍 Check c.txt در koyeb3 (حداکثر ۳۰ دور)
-      id: smart_check
-      run: |
-        echo "🔎 منتظر c.txt در https://github.com/dariushKingking000/koyeb3 (حداکثر ۳۰ دقیقه)..."
-        cd target-repo
-        for i in {1..30}; do
-          if [ -f "c.txt" ]; then
-            echo "✅ دور $i - c.txt پیدا شد! $(cat c.txt)"
-            echo "found=true" >> $GITHUB_OUTPUT
-            echo "round=$i" >> $GITHUB_OUTPUT
-            echo "content=$(cat c.txt)" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          echo "⏳ دور $i/30 - c.txt نیست، pull کنیم..."
-          git pull origin main --quiet || true
-          echo "📂 Current files: $(ls -la)"
-          sleep 60
-        done
-        echo "❌ ۳۰ دور تمام - c.txt در koyeb3 پیدا نشد"
-        echo "found=false" >> $GITHUB_OUTPUT
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
     
-    - name: 📋 Show Final Status & Logs
+    - name: Install Playwright
       run: |
-        echo "🎯 Target: https://github.com/dariushKingking000/koyeb3"
-        echo "✅ Result: found=${{ steps.smart_check.outputs.found }}"
-        echo "🔢 Round: ${{ steps.smart_check.outputs.round || 'N/A' }}"
-        echo "📄 Content: ${{ steps.smart_check.outputs.content || 'N/A' }}"
-        echo "📂 Final files:"
-        ls -la target-repo/ || true
-        echo "🕒 تمام لاگ‌های ۳۰ دور در Actions tab قابل مشاهده"
+        pip install playwright pillow requests
+        playwright install chromium
     
-    - name: 💾 Create Status File (اختیاری)
-      if: always()
+    - name: Check c.txt & Google screenshot
       run: |
-        cat > status.txt << EOF
-        Timestamp: $(date)
-        Target: https://github.com/dariushKingking000/koyeb3
-        Found: ${{ steps.smart_check.outputs.found }}
-        Round: ${{ steps.smart_check.outputs.round || 'N/A' }}
-        Content: ${{ steps.smart_check.outputs.content || 'N/A' }}
-        EOF
-        echo "::notice:: Status file created with results"
+        python -c "
+        import requests
+        import time
+        from playwright.sync_api import sync_playwright
+        import datetime
+        
+        url = 'https://github.com/dariushKingking000/koyeb3/raw/main/c.txt'
+        checks = 0
+        max_checks = 30
+        
+        while checks < max_checks:
+            try:
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    content = response.text.strip()
+                    now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+                    print(f'✅ c.txt found! Content: {content}')
+                    
+                    with sync_playwright() as p:
+                        browser = p.chromium.launch(headless=True)
+                        page = browser.new_page()
+                        page.goto('https://www.google.com')
+                        page.screenshot(path=f'google_{now}.png', full_page=True)
+                        browser.close()
+                    break
+                else:
+                    print(f'❌ c.txt not found (check {checks+1}/{max_checks})')
+            except:
+                print(f'❌ Error checking (check {checks+1}/{max_checks})')
+            
+            checks += 1
+            if checks < max_checks:
+                time.sleep(60)
+        
+        if checks >= max_checks:
+            print('⏰ Max checks reached, no c.txt found')
+        "
+    
+    - name: Commit & Push
+      run: |
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+        git add google_*.png
+        git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
+        git push
