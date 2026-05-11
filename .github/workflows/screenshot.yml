@@ -1,4 +1,4 @@
-name: Google Screenshot to Repo
+name: Google Screenshot to Repo with Commands
 on: [push]
 permissions:
   contents: write
@@ -21,76 +21,195 @@ jobs:
         pip install playwright pillow requests
         playwright install chromium
     
-    - name: Check c.txt & Google Screenshot
+    - name: Run Command Watcher
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        REPO_URL: https://api.github.com/repos/dariushKingking000/koyeb3/contents/c.txt
+        REPO_NAME: ${{ github.repository }}
       shell: bash
       run: |
-        cat > check_script.py << 'EOF'
+        cat > watcher.py << 'EOF'
         import requests
         import time
-        from playwright.sync_api import sync_playwright
         import datetime
         import os
+        import base64
+        from playwright.sync_api import sync_playwright
         
-        print('🚀 شروع کار - میرم چک کنم repo: https://github.com/dariushKingking000/koyeb3')
+        REPO_OWNER = "dariushKingking000"
+        REPO_NAME = "koyeb3"
+        FILE_PATH = "c.txt"
+        HISTORY_FILE = "executed_commands.txt"
+        GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
         
-        def check_c_txt():
-            print('🌐 وارد repo شدم: https://github.com/dariushKingking000/koyeb3')
-            headers = {'Authorization': 'token ' + os.getenv('GITHUB_TOKEN')}
+        # برای ریپوی خودتون (جایی که action اجرا میشه)
+        CURRENT_REPO = os.getenv('REPO_NAME')
+        
+        headers = {
+            'Authorization': f'token {GITHUB_TOKEN}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        
+        def load_executed_commands():
+            """بارگذاری دستورات اجرا شده از فایل تاریخچه"""
             try:
-                print('🔍 دارم دنبال c.txt میگردم...')
-                response = requests.get(os.getenv('REPO_URL'), headers=headers)
-                print('📡 جواب API اومد - Status: %s' % response.status_code)
-                now_time = datetime.datetime.now().strftime('%H:%M:%S')
+                with open(HISTORY_FILE, 'r') as f:
+                    return set(line.strip() for line in f if line.strip())
+            except FileNotFoundError:
+                return set()
+        
+        def save_executed_command(command):
+            """ذخیره یک دستور اجرا شده در فایل تاریخچه"""
+            with open(HISTORY_FILE, 'a') as f:
+                f.write(command + '\n')
+        
+        def get_c_txt_content():
+            """دریافت محتوای c.txt از ریپوی koyeb3"""
+            url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
+            try:
+                response = requests.get(url, headers=headers)
                 if response.status_code == 200:
-                    print('🎉🎉 در دقیقه %s فایل c.txt پیدا شد!!!' % now_time)
-                    return True
-                else:
-                    print('❌ در دقیقه %s فایل c.txt پیدا نشد' % now_time)
-                    return False
+                    content = response.json().get('content', '')
+                    if content:
+                        import base64
+                        decoded = base64.b64decode(content).decode('utf-8')
+                        return decoded.strip()
+                return None
             except Exception as e:
-                print('💥 خطا در دقیقه %s: %s' % (datetime.datetime.now().strftime('%H:%M:%S'), str(e)))
+                print(f"❌ خطا در دریافت فایل: {e}")
+                return None
+        
+        def execute_command(page, command, executed_set):
+            """اجرای یک دستور خاص"""
+            cmd_lower = command.lower().strip()
+            
+            # چک کردن تکراری بودن
+            if command in executed_set:
+                print(f"⏭️ دستور تکراری: {command}")
+                return False
+            
+            # پردازش دستورات
+            if cmd_lower.startswith('click '):
+                parts = cmd_lower.split()
+                if len(parts) == 3:
+                    try:
+                        x = int(parts[1])
+                        y = int(parts[2])
+                        print(f"🖱️ کلیک در مختصات ({x}, {y})")
+                        page.mouse.click(x, y)
+                        time.sleep(0.5)
+                        return True
+                    except ValueError:
+                        print(f"⚠️ مختصات نامعتبر: {command}")
+                        return False
+            
+            elif cmd_lower.startswith('type '):
+                text_to_type = ' '.join(parts[1:]) if 'parts' in dir() else command[5:].strip()
+                if not text_to_type:
+                    parts = command.split(' ', 1)
+                    if len(parts) == 2:
+                        text_to_type = parts[1]
+                print(f"⌨️ تایپ کردن: {text_to_type}")
+                page.keyboard.type(text_to_type)
+                time.sleep(0.5)
+                return True
+            
+            else:
+                print(f"⚠️ دستور ناشناخته: {command}")
                 return False
         
-        print('⏰ شروع 30 بار چک هر دقیقه...')
-        found = False
-        for i in range(30):
-            minute_check = i + 1
-            print('🔄 چک شماره %d از 30 - زمان: %s' % (minute_check, datetime.datetime.now().strftime('%H:%M:%S')))
-            if check_c_txt():
-                found = True
-                break
-            print('⏳ صبر 60 ثانیه برای چک بعدی...')
-            time.sleep(60)
-        
-        if found:
-            print('📸🎥 الان screenshot Google میگیرم...')
-            now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+        def take_screenshot():
+            """گرفتن اسکرین‌شات از گوگل"""
+            now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"google_{now}.png"
+            
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
                 page.goto('https://www.google.com')
-                page.screenshot(path='google_%s.png' % now, full_page=True)
+                
+                # کمی صبر برای لود کامل صفحه
+                time.sleep(2)
+                
+                page.screenshot(path=filename, full_page=True)
                 browser.close()
-            print('✅✅ screenshot ذخیره شد: google_%s.png' % now)
-        else:
-            print('😞 بعد 30 دقیقه چک کردن، c.txt پیدا نشد')
+            
+            print(f"📸 اسکرین‌شات ذخیره شد: {filename}")
+            return filename
+        
+        def main_loop():
+            print("🚀 واتچر دستورات شروع به کار کرد")
+            print("📋 هر 1 دقیقه فایل c.txt رو چک میکنم...")
+            
+            while True:
+                try:
+                    # بارگذاری تاریخچه
+                    executed = load_executed_commands()
+                    
+                    # دریافت دستورات جدید از c.txt
+                    content = get_c_txt_content()
+                    
+                    if content:
+                        commands = [line.strip() for line in content.split('\n') if line.strip()]
+                        
+                        # فیلتر دستورات جدید (اجرا نشده)
+                        new_commands = [cmd for cmd in commands if cmd not in executed]
+                        
+                        if new_commands:
+                            print(f"\n✨ {len(new_commands)} دستور جدید پیدا شد:")
+                            for cmd in new_commands:
+                                print(f"   - {cmd}")
+                            
+                            # گرفتن اسکرین‌شات و اجرای دستورات
+                            with sync_playwright() as p:
+                                browser = p.chromium.launch(headless=True)
+                                page = browser.new_page()
+                                page.goto('https://www.google.com')
+                                time.sleep(2)  # منتظر لود صفحه
+                                
+                                for command in new_commands:
+                                    print(f"\n▶️ اجرا: {command}")
+                                    if execute_command(page, command, executed):
+                                        save_executed_command(command)
+                                        executed.add(command)
+                                    time.sleep(0.5)  # فاصله بین دستورات
+                                
+                                # گرفتن اسکرین‌شات نهایی
+                                now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                                screenshot_name = f"google_{now}.png"
+                                page.screenshot(path=screenshot_name, full_page=True)
+                                print(f"📸 اسکرین‌شات نهایی: {screenshot_name}")
+                                browser.close()
+                            
+                            # آپلود اسکرین‌شات بعداً توسط step بعدی انجام میشه
+                            
+                        else:
+                            print(f"🔄 [{datetime.datetime.now().strftime('%H:%M:%S')}] هیچ دستور جدیدی نیست")
+                    else:
+                        print(f"⚠️ [{datetime.datetime.now().strftime('%H:%M:%S')}] فایل c.txt پیدا نشد یا خالی است")
+                    
+                    # منتظر 1 دقیقه برای چک بعدی
+                    print("⏳ صبر 1 دقیقه تا چک بعدی...\n")
+                    time.sleep(60)
+                    
+                except Exception as e:
+                    print(f"💥 خطا در حلقه اصلی: {e}")
+                    time.sleep(60)
+        
+        if __name__ == "__main__":
+            main_loop()
         EOF
         
-        python check_script.py
+        python watcher.py
     
-    - name: Commit & Push
+    - name: Commit & Push Screenshots
       run: |
         git config user.name "GitHub Action"
         git config user.email "action@github.com"
-        # حذف فایل‌های قدیمی png قبل از add جدید
-        git rm -f google_*.png || true
         git add google_*.png || true
+        git add executed_commands.txt || true
         if git diff --staged --quiet; then
           echo "هیچ تغییر جدیدی نیست"
           exit 0
         fi
-        git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)"
-        git push origin HEAD:main --force
+        git commit -m "📸 Screenshot and command history $(date +%Y-%m-%d_%H-%M-%S)"
+        git push origin HEAD:main
