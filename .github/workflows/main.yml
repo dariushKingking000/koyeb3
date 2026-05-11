@@ -1,10 +1,35 @@
-# .github/workflows/main.yml
-name: Manual Trigger
-on:
-  workflow_dispatch:
-
+name: Single Browser Screenshot
+on: [push]
 jobs:
-  test:
+  screenshot:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Hello from GitHub Actions!"
+    - uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install Playwright & Selenium
+      run: |
+        pip install playwright selenium pillow
+        playwright install chromium
+    
+    - name: Run single browser & screenshot
+      run: |
+        python -c "
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto('https://example.com')
+            page.screenshot(path='screenshot.png', full_page=True)
+            browser.close()
+        "
+    
+    - name: Upload screenshot
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshot
+        path: screenshot.png
