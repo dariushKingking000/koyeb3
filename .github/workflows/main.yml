@@ -1,10 +1,14 @@
-name: Screenshot & Upload Artifact
+name: Auto Commit Screenshot
 on: [push]
+permissions:
+  contents: write  # اجازه write به repo
 jobs:
   screenshot:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}  # Token خودکار
     
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -16,22 +20,24 @@ jobs:
         pip install playwright pillow
         playwright install chromium
     
-    - name: Take GitHub repo screenshot
+    - name: Take screenshot
       run: |
         python -c "
         from playwright.sync_api import sync_playwright
         import datetime
-        now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
+        now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto('https://github.com/dariushKingking000/koyeb3')
-            page.screenshot(path=f'screenshot-{now}.png', full_page=True)
+            page.screenshot(path=f'screenshot_{now}.png', full_page=True)
             browser.close()
         "
     
-    - name: Upload screenshot artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: github-screenshot
-        path: screenshot-*.png
+    - name: Commit & Push screenshot
+      run: |
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+        git add screenshot_*.png
+        git commit -m "📸 Screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
+        git push
