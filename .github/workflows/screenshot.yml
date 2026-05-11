@@ -20,55 +20,60 @@ jobs:
         pip install playwright pillow requests
         playwright install chromium
     
+    - name: Test Python
+      run: python -c "print('✅ Python کار میکنه!')"
+    
     - name: Check c.txt & Google screenshot
       run: |
-        python -c "
-        import requests
-        import time
-        from playwright.sync_api import sync_playwright
-        import datetime
-        
-        url = 'https://github.com/dariushKingking000/koyeb3/raw/main/c.txt'
-        checks = 0
-        max_checks = 30
-        print('🚀 شروع چک کردن c.txt - حداکثر 30 بار هر دقیقه')
-        
-        while checks < max_checks:
-            checks = checks + 1
-            now_time = datetime.datetime.now().strftime('%H:%M:%S')
-            print('🔍 چک #' + str(checks) + '/' + str(max_checks) + ' - ' + now_time)
+        echo "🚀 شروع فرآیند..."
+        python << 'EOF'
+import requests
+import time
+from playwright.sync_api import sync_playwright
+import datetime
+
+url = 'https://github.com/dariushKingking000/koyeb3/raw/main/c.txt'
+checks = 0
+max_checks = 30
+print('🚀 شروع چک کردن c.txt - حداکثر 30 بار هر دقیقه')
+
+while checks < max_checks:
+    checks = checks + 1
+    now_time = datetime.datetime.now().strftime('%H:%M:%S')
+    print('🔍 چک #' + str(checks) + '/' + str(max_checks) + ' - ' + now_time)
+    
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            content = response.text.strip()
+            print('✅ c.txt پیدا شد! محتوا: "' + content + '"')
             
-            try:
-                response = requests.get(url, timeout=10)
-                if response.status_code == 200:
-                    content = response.text.strip()
-                    print('✅ c.txt پیدا شد! محتوا: \"' + content + '\"')
-                    
-                    now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-                    print('📸 در حال گرفتن اسکرین‌شات گوگل...')
-                    
-                    with sync_playwright() as p:
-                        browser = p.chromium.launch(headless=True)
-                        page = browser.new_page()
-                        page.goto('https://www.google.com')
-                        page.screenshot(path='google_' + now + '.png', full_page=True)
-                        browser.close()
-                    print('✅ اسکرین‌شات ذخیره شد: google_' + now + '.png')
-                    print('🎉 تمام!')
-                    break
-                else:
-                    print('❌ c.txt پیدا نشد (Status: ' + str(response.status_code) + ')')
-            except Exception as e:
-                print('❌ خطا در چک: ' + str(e)[:100])
+            now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+            print('📸 در حال گرفتن اسکرین‌شات گوگل...')
             
-            if checks < max_checks:
-                print('⏳ 60 ثانیه صبر...')
-                time.sleep(60)
-        
-        if checks >= max_checks:
-            print('⏰ 30 بار چک شد ولی c.txt پیدا نشد!')
-        print('🏁 پایان فرآیند')
-        "
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto('https://www.google.com')
+                page.screenshot(path='google_' + now + '.png', full_page=True)
+                browser.close()
+            print('✅ اسکرین‌شات ذخیره شد: google_' + now + '.png')
+            print('🎉 تمام!')
+            break
+        else:
+            print('❌ c.txt پیدا نشد (Status: ' + str(response.status_code) + ')')
+    except Exception as e:
+        print('❌ خطا در چک: ' + str(e)[:100])
+    
+    if checks < max_checks:
+        print('⏳ 60 ثانیه صبر...')
+        time.sleep(60)
+
+if checks >= max_checks:
+    print('⏰ 30 بار چک شد ولی c.txt پیدا نشد!')
+print('🏁 پایان فرآیند')
+EOF
+        echo "🏁 فرآیند تموم شد!"
     
     - name: Commit & Push
       run: |
