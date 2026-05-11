@@ -1,14 +1,20 @@
-name: Auto Commit Screenshot
-on: [push]
+name: Google Screenshot to Repo
+on:
+  push:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [screenshot]
+
 permissions:
-  contents: write  # اجازه write به repo
+  contents: write
+
 jobs:
   screenshot:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}  # Token خودکار
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -20,7 +26,7 @@ jobs:
         pip install playwright pillow
         playwright install chromium
     
-    - name: Take screenshot
+    - name: Google screenshot
       run: |
         python -c "
         from playwright.sync_api import sync_playwright
@@ -29,15 +35,20 @@ jobs:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            page.goto('https://github.com/dariushKingking000/koyeb3')
-            page.screenshot(path=f'screenshot_{now}.png', full_page=True)
+            page.set_viewport_size({'width': 1920, 'height': 1080})
+            page.goto('https://www.google.com', wait_until='networkidle')
+            page.screenshot(path=f'google_{now}.png', full_page=True)
             browser.close()
         "
     
-    - name: Commit & Push screenshot
+    - name: Commit & Push
       run: |
         git config user.name "GitHub Action"
         git config user.email "action@github.com"
-        git add screenshot_*.png
-        git commit -m "📸 Screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
-        git push
+        git add google_*.png
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)"
+          git push
+        fi
