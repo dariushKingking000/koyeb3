@@ -20,48 +20,70 @@ jobs:
         pip install playwright pillow requests
         playwright install chromium
     
-    - name: Test Python
-      run: python -c "print('✅ Python کار میکنه!')"
-    
-    - name: Check c.txt & Google screenshot
+    - name: Screenshot & Check c.txt (30min)
       run: |
-        echo "🚀 شروع فرآیند..."
-        echo "🔍 چک کردن c.txt..."
         python -c "
-        import requests
-        import time
-        from playwright.sync_api import sync_playwright
-        import datetime
-        import sys
+import requests
+import time
+from playwright.sync_api import sync_playwright
+import datetime
+
+url = 'https://github.com/dariushKingking000/koyeb3/raw/main/c.txt'
+max_checks = 30
+found_content = None
+timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+print('🚀 شروع - ' + str(max_checks) + ' بار چک (30 دقیقه)')
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=False)
+    page = browser.new_page()
+    
+    page.goto('https://www.google.com')
+    before_file = 'google_before_' + timestamp + '.png'
+    page.screenshot(path=before_file, full_page=True)
+    print('📸 Screenshot قبل: ' + before_file)
+    
+    for check in range(1, max_checks + 1):
+        print('\n🔍 چک #' + str(check) + '/' + str(max_checks))
+        print('⏰ زمان: ' + datetime.datetime.now().strftime('%H:%M:%S'))
         
-        url = 'https://github.com/dariushKingking000/koyeb3/raw/main/c.txt'
-        checks = 0
-        max_checks = 3
-        print('شروع - حداکثر ' + str(max_checks) + ' بار')
+        try:
+            print('🌐 درخواست: ' + url)
+            r = requests.get(url, timeout=15)
+            print('📊 Status: ' + str(r.status_code))
+            
+            if r.status_code == 200:
+                content = r.text.strip()
+                print('✅ PIK! محتوا: \"' + content + '\"')
+                found_content = content
+                break
+            else:
+                print('❌ Status ' + str(r.status_code) + ' - محتوا نیست')
+        except Exception as e:
+            print('💥 خطا: ' + str(e))
         
-        while checks < max_checks:
-            checks = checks + 1
-            print('چک #' + str(checks))
-            try:
-                r = requests.get(url, timeout=10)
-                if r.status_code == 200:
-                    print('PIK! محتوا: ' + r.text.strip())
-                    break
-                else:
-                    print('ندید')
-            except:
-                print('خطا')
-            if checks < max_checks:
-                print('60s صبر')
-                time.sleep(60)
-        print('پایان')
+        if check < max_checks:
+            print('⏳ 60 ثانیه صبر...')
+            time.sleep(60)
+    
+    after_file = 'google_after_' + timestamp + '.png'
+    page.goto('https://www.google.com')
+    page.screenshot(path=after_file, full_page=True)
+    print('📸 Screenshot بعد: ' + after_file)
+    browser.close()
+
+print('\n🏁 پایان! پیدا شد: ' + (found_content or 'خیر'))
         "
-        echo "🏁 تموم!"
     
     - name: Commit & Push
       run: |
         git config user.name "GitHub Action"
         git config user.email "action@github.com"
         git add google_*.png
-        git commit -m "🌐 Screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
-        git push
+        if [ -n "$(git diff --staged)" ]; then
+          git commit -m "🌐 Screenshots $(date +%Y-%m-%d_%H-%M-%S)"
+          git push
+        else
+          echo "هیچ فایل جدیدی نیست"
+        fi
