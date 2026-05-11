@@ -1,19 +1,31 @@
-# .github/workflows/browser.yml - GitHub Action (koyeb3 repo)
-name: Browser Control
+name: Google Browser Control
 
 on:
   repository_dispatch:
     types: [open_google, take_screenshot, copy_page, click_page]
 
 jobs:
-  browser:
+  control:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
     steps:
     - uses: actions/checkout@v4
     
     - name: Setup Playwright
       uses: microsoft/playwright-github-action@v1
       
-    - name: Open Google & Control
+    - name: Run Browser Command
       run: |
-        python browser_control.py '${{ github.event.client_payload.event_type }}'
+        EVENT_TYPE="${{ github.event.client_payload.event_type }}"
+        CLICK_X="${{ github.event.client_payload.x || 500 }}"
+        CLICK_Y="${{ github.event.client_payload.y || 300 }}"
+        
+        python browser.py "$EVENT_TYPE" "$CLICK_X" "$CLICK_Y"
+        
+    - name: Upload Screenshot
+      if: github.event.client_payload.event_type == 'take_screenshot'
+      uses: actions/upload-artifact@v4
+      with:
+        name: google-screenshot
+        path: google.png
