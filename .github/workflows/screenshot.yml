@@ -24,8 +24,9 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO_URL: https://api.github.com/repos/dariushKingking000/koyeb3/contents/c.txt
+      shell: bash
       run: |
-        python -c "
+        cat > check_script.py << 'EOF'
         import requests
         import time
         from playwright.sync_api import sync_playwright
@@ -75,7 +76,9 @@ jobs:
             print('✅✅ screenshot ذخیره شد: google_%s.png' % now)
         else:
             print('😞 بعد 30 دقیقه چک کردن، c.txt پیدا نشد')
-        "
+        EOF
+        
+        python check_script.py
     
     - name: Commit & Push
       run: |
