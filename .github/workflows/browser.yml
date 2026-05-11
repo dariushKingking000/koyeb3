@@ -1,0 +1,19 @@
+# .github/workflows/browser.yml - GitHub Action (koyeb3 repo)
+name: Browser Control
+
+on:
+  repository_dispatch:
+    types: [open_google, take_screenshot, copy_page, click_page]
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Playwright
+      uses: microsoft/playwright-github-action@v1
+      
+    - name: Open Google & Control
+      run: |
+        python browser_control.py '${{ github.event.client_payload.event_type }}'
