@@ -1,8 +1,8 @@
 name: Google Screenshot to Repo
 on:
-  workflow_dispatch:  # دستی فعال میشه
+  workflow_dispatch:
   repository_dispatch:
-    types: [flask-alive]  # از flask trigger میشه
+    types: [flask-alive]
 
 permissions:
   contents: write
@@ -14,6 +14,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0  # کل history رو بگیر
     
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -25,12 +26,13 @@ jobs:
         pip install playwright pillow
         playwright install chromium
     
-    - name: 🖥️ Log Flask Status
+    - name: 🖥️ Flask Active Log
       run: |
         echo "✅ Flask از کامپیوتر کاربر فعال شد!"
-        echo "📱 Screenshot Google در حال گرفتن..."
+        echo "📱 Google screenshot در حال گرفتن..."
     
-    - name: Google screenshot
+    - name: Google Screenshot
+      id: screenshot
       run: |
         python -c "
         from playwright.sync_api import sync_playwright
@@ -42,12 +44,20 @@ jobs:
             page.goto('https://www.google.com')
             page.screenshot(path=f'google_{now}.png', full_page=True)
             browser.close()
+        print('screenshot_file=google_' + now + '.png')
         "
     
-    - name: Commit & Push
+    - name: Git Pull & Push
       run: |
         git config user.name "Flask + GitHub Action"
         git config user.email "action@github.com"
+        
+        # Pull latest changes
+        git pull origin main --rebase
+        
+        # Add screenshot
         git add google_*.png
-        git commit -m "🌐 Google screenshot - Flask Triggered $(date +%Y-%m-%d_%H-%M)" || exit 0
-        git push
+        git commit -m "🌐 Google screenshot - Flask Triggered $(date +%Y-%m-%d_%H-%M)" || echo "No changes to commit"
+        
+        # Force push (حل conflict)
+        git push origin main --force-with-lease
