@@ -31,14 +31,20 @@ jobs:
         url = 'https://github.com/dariushKingking000/koyeb3/raw/main/c.txt'
         checks = 0
         max_checks = 30
+        print('🚀 شروع چک کردن c.txt - حداکثر 30 بار هر دقیقه')
         
         while checks < max_checks:
+            checks += 1
+            print(f'🔍 چک #{checks}/{max_checks} - {datetime.datetime.now().strftime('%H:%M:%S')}')
+            
             try:
                 response = requests.get(url, timeout=10)
                 if response.status_code == 200:
                     content = response.text.strip()
+                    print(f'✅ c.txt پیدا شد! محتوا: \"{content}\"')
+                    
                     now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-                    print(f'✅ c.txt found! Content: {content}')
+                    print('📸 در حال گرفتن اسکرین‌شات گوگل...')
                     
                     with sync_playwright() as p:
                         browser = p.chromium.launch(headless=True)
@@ -46,18 +52,21 @@ jobs:
                         page.goto('https://www.google.com')
                         page.screenshot(path=f'google_{now}.png', full_page=True)
                         browser.close()
+                    print(f'✅ اسکرین‌شات ذخیره شد: google_{now}.png')
+                    print('🎉 تمام!')
                     break
                 else:
-                    print(f'❌ c.txt not found (check {checks+1}/{max_checks})')
-            except:
-                print(f'❌ Error checking (check {checks+1}/{max_checks})')
+                    print(f'❌ c.txt پیدا نشد (Status: {response.status_code})')
+            except Exception as e:
+                print(f'❌ خطا در چک: {str(e)[:100]}')
             
-            checks += 1
             if checks < max_checks:
+                print('⏳ 60 ثانیه صبر...')
                 time.sleep(60)
         
         if checks >= max_checks:
-            print('⏰ Max checks reached, no c.txt found')
+            print('⏰ 30 بار چک شد ولی c.txt پیدا نشد!')
+        print('🏁 پایان فرآیند')
         "
     
     - name: Commit & Push
