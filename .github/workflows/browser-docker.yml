@@ -1,18 +1,43 @@
-name: Google Docker ✅
-on:
-  repository_dispatch:
-    types: [screenshot, copy, click]
-
+name: Google Screenshot to Repo
+on: [push]
+permissions:
+  contents: write
 jobs:
-  browser:
+  screenshot:
     runs-on: ubuntu-latest
-    container: mcr.microsoft.com/playwright/python:v1.44.0-jammy
-    
     steps:
     - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
     
     - name: Install Playwright
-      run: playwright install chromium
+      run: |
+        pip install playwright pillow
+        playwright install chromium
     
-    - name: Run Browser
-      run: python browser.py ${{ github.event.client_payload.event }}
+    - name: Google screenshot
+      run: |
+        python -c "
+        from playwright.sync_api import sync_playwright
+        import datetime
+        now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto('https://www.google.com')
+            page.screenshot(path=f'google_{now}.png', full_page=True)
+            browser.close()
+        "
+    
+    - name: Commit & Push
+      run: |
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+        git add google_*.png
+        git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
+        git push
