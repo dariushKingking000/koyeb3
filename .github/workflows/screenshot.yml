@@ -15,75 +15,66 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Install Playwright
+    - name: Install Playwright & Requests
       run: |
         pip install playwright pillow requests
         playwright install chromium
     
-    - name: Screenshot & Check c.txt (30min)
+    - name: Check c.txt & Google Screenshot
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPO_URL: https://api.github.com/repos/dariushKingking000/koyeb3/contents/c.txt
       run: |
         python -c "
-import requests
-import time
-from playwright.sync_api import sync_playwright
-import datetime
-
-url = 'https://github.com/dariushKingking000/koyeb3/raw/main/c.txt'
-max_checks = 30
-found_content = None
-timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-
-print('🚀 شروع - ' + str(max_checks) + ' بار چک (30 دقیقه)')
-
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=False)
-    page = browser.new_page()
-    
-    page.goto('https://www.google.com')
-    before_file = 'google_before_' + timestamp + '.png'
-    page.screenshot(path=before_file, full_page=True)
-    print('📸 Screenshot قبل: ' + before_file)
-    
-    for check in range(1, max_checks + 1):
-        print('\n🔍 چک #' + str(check) + '/' + str(max_checks))
-        print('⏰ زمان: ' + datetime.datetime.now().strftime('%H:%M:%S'))
+        import requests
+        import time
+        from playwright.sync_api import sync_playwright
+        import datetime
+        import os
         
-        try:
-            print('🌐 درخواست: ' + url)
-            r = requests.get(url, timeout=15)
-            print('📊 Status: ' + str(r.status_code))
-            
-            if r.status_code == 200:
-                content = r.text.strip()
-                print('✅ PIK! محتوا: \"' + content + '\"')
-                found_content = content
+        print('🔍 شروع چک کردن c.txt در repo: https://github.com/dariushKingking000/koyeb3')
+        
+        def check_c_txt():
+            headers = {'Authorization': f'token {os.getenv('GITHUB_TOKEN')}'}
+            try:
+                response = requests.get(os.getenv('REPO_URL'), headers=headers)
+                print(f'[{datetime.datetime.now()}] ✅ درخواست API ارسال شد - Status: {response.status_code}')
+                if response.status_code == 200:
+                    print(f'[{datetime.datetime.now()}] 🎉 فایل c.txt پیدا شد! Screenshot میگیریم...')
+                    return True
+                else:
+                    print(f'[{datetime.datetime.now()}] ❌ فایل c.txt پیدا نشد')
+                    return False
+            except Exception as e:
+                print(f'[{datetime.datetime.now()}] ❌ خطا در چک کردن: {str(e)}')
+                return False
+        
+        found = False
+        for i in range(30):
+            print(f'[{datetime.datetime.now()}] 🔄 چک {i+1}/30 - انتظار 60 ثانیه...')
+            if check_c_txt():
+                found = True
                 break
-            else:
-                print('❌ Status ' + str(r.status_code) + ' - محتوا نیست')
-        except Exception as e:
-            print('💥 خطا: ' + str(e))
-        
-        if check < max_checks:
-            print('⏳ 60 ثانیه صبر...')
             time.sleep(60)
-    
-    after_file = 'google_after_' + timestamp + '.png'
-    page.goto('https://www.google.com')
-    page.screenshot(path=after_file, full_page=True)
-    print('📸 Screenshot بعد: ' + after_file)
-    browser.close()
-
-print('\n🏁 پایان! پیدا شد: ' + (found_content or 'خیر'))
+        
+        if found:
+            print('📸 گرفتن screenshot از Google...')
+            now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto('https://www.google.com')
+                page.screenshot(path=f'google_{now}.png', full_page=True)
+                browser.close()
+            print(f'✅ Screenshot ذخیره شد: google_{now}.png')
+        else:
+            print('❌ بعد از 30 بار چک، c.txt پیدا نشد')
         "
     
     - name: Commit & Push
       run: |
         git config user.name "GitHub Action"
         git config user.email "action@github.com"
-        git add google_*.png
-        if [ -n "$(git diff --staged)" ]; then
-          git commit -m "🌐 Screenshots $(date +%Y-%m-%d_%H-%M-%S)"
-          git push
-        else
-          echo "هیچ فایل جدیدی نیست"
-        fi
+        git add google_*.png || echo "هیچ screenshot جدیدی نیست"
+        git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
+        git push
