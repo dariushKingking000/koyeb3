@@ -12,43 +12,63 @@ jobs:
   screenshot:
     runs-on: ubuntu-latest
     steps:
+    - name: 🔔 Show Trigger Info
+      run: |
+        echo "🚀 Workflow triggered by: ${{ github.event_name }}"
+        echo "📋 Event details:"
+        echo "  - Action: ${{ github.event.action }}"
+        echo "  - Event type: ${{ github.event_name }}"
+        echo "  - Repo: ${{ github.repository }}"
+        echo "  - SHA: ${{ github.sha }}"
+        echo "⏰ Starting screenshot at $(date)"
+    
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Setup Python
+    - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
-    - name: Install Playwright
+    - name: 📦 Install Playwright
       run: |
         pip install playwright pillow
         playwright install chromium
     
-    - name: Google screenshot
+    - name: 📸 Taking Google Screenshot
       run: |
+        echo "🌐 Navigating to Google.com..."
         python -c "
         from playwright.sync_api import sync_playwright
         import datetime
         now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+        print(f'📷 Screenshot filename: google_{now}.png')
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.set_viewport_size({'width': 1920, 'height': 1080})
+            print('✅ Loading Google.com...')
             page.goto('https://www.google.com', wait_until='networkidle')
+            print('📸 Taking screenshot...')
             page.screenshot(path=f'google_{now}.png', full_page=True)
+            print('✅ Screenshot saved!')
             browser.close()
         "
     
-    - name: Commit & Push
+    - name: 💾 Commit & Push Screenshot
       run: |
+        echo "📂 Checking for new screenshots..."
+        ls -la google_*.png || echo "No new screenshots found"
         git config user.name "GitHub Action"
         git config user.email "action@github.com"
         git add google_*.png
         if git diff --staged --quiet; then
-          echo "No changes to commit"
+          echo "ℹ️  No changes to commit"
         else
-          git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)"
+          git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M) [trigger: ${{ github.event_name }}]"
+          echo "✅ Committed and pushing..."
           git push
+          echo "🎉 Screenshot uploaded successfully!"
         fi
+        echo "🏁 Workflow completed at $(date)"
