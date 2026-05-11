@@ -85,7 +85,12 @@ jobs:
       run: |
         git config user.name "GitHub Action"
         git config user.email "action@github.com"
-        git add google_*.png || echo "هیچ screenshot جدیدی نیست"
-        git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
-        git pull --rebase
-        git push origin HEAD:main
+        # حذف فایل‌های قدیمی png قبل از add جدید
+        git rm -f google_*.png || true
+        git add google_*.png || true
+        if git diff --staged --quiet; then
+          echo "هیچ تغییر جدیدی نیست"
+          exit 0
+        fi
+        git commit -m "🌐 Google screenshot $(date +%Y-%m-%d_%H-%M)"
+        git push origin HEAD:main --force
