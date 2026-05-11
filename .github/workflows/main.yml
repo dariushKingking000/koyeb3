@@ -1,4 +1,4 @@
-name: Single Browser Screenshot
+name: Screenshot to GitHub Repo
 on: [push]
 jobs:
   screenshot:
@@ -11,25 +11,27 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Install Playwright & Selenium
+    - name: Install Playwright
       run: |
-        pip install playwright selenium pillow
+        pip install playwright pillow
         playwright install chromium
     
-    - name: Run single browser & screenshot
+    - name: Take screenshot
       run: |
         python -c "
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            page.goto('https://example.com')
+            page.goto('https://github.com/dariushKingking000/koyeb3')
             page.screenshot(path='screenshot.png', full_page=True)
             browser.close()
         "
     
-    - name: Upload screenshot
-      uses: actions/upload-artifact@v4
-      with:
-        name: screenshot
-        path: screenshot.png
+    - name: Commit screenshot to repo
+      run: |
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+        git add screenshot.png
+        git commit -m "📸 Auto screenshot $(date +%Y-%m-%d_%H-%M)" || exit 0
+        git push
