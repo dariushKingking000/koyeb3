@@ -32,33 +32,39 @@ jobs:
         import datetime
         import os
         
-        print('🔍 شروع چک کردن c.txt در repo: https://github.com/dariushKingking000/koyeb3')
+        print('🚀 شروع کار - میرم چک کنم repo: https://github.com/dariushKingking000/koyeb3')
         
         def check_c_txt():
+            print('🌐 وارد repo شدم: https://github.com/dariushKingking000/koyeb3')
             headers = {'Authorization': 'token ' + os.getenv('GITHUB_TOKEN')}
             try:
+                print('🔍 دارم دنبال c.txt میگردم...')
                 response = requests.get(os.getenv('REPO_URL'), headers=headers)
-                print('[%s] ✅ درخواست API ارسال شد - Status: %s' % (datetime.datetime.now(), response.status_code))
+                print('📡 جواب API اومد - Status: %s' % response.status_code)
+                now_time = datetime.datetime.now().strftime('%H:%M:%S')
                 if response.status_code == 200:
-                    print('[%s] 🎉 فایل c.txt پیدا شد! Screenshot میگیریم...' % datetime.datetime.now())
+                    print('🎉🎉 در دقیقه %s فایل c.txt پیدا شد!!!' % now_time)
                     return True
                 else:
-                    print('[%s] ❌ فایل c.txt پیدا نشد' % datetime.datetime.now())
+                    print('❌ در دقیقه %s فایل c.txt پیدا نشد' % now_time)
                     return False
             except Exception as e:
-                print('[%s] ❌ خطا در چک کردن: %s' % (datetime.datetime.now(), str(e)))
+                print('💥 خطا در دقیقه %s: %s' % (datetime.datetime.now().strftime('%H:%M:%S'), str(e)))
                 return False
         
+        print('⏰ شروع 30 بار چک هر دقیقه...')
         found = False
         for i in range(30):
-            print('[%s] 🔄 چک %d/30 - انتظار 60 ثانیه...' % (datetime.datetime.now(), i+1))
+            minute_check = i + 1
+            print('🔄 چک شماره %d از 30 - زمان: %s' % (minute_check, datetime.datetime.now().strftime('%H:%M:%S')))
             if check_c_txt():
                 found = True
                 break
+            print('⏳ صبر 60 ثانیه برای چک بعدی...')
             time.sleep(60)
         
         if found:
-            print('📸 گرفتن screenshot از Google...')
+            print('📸🎥 الان screenshot Google میگیرم...')
             now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
@@ -66,9 +72,9 @@ jobs:
                 page.goto('https://www.google.com')
                 page.screenshot(path='google_%s.png' % now, full_page=True)
                 browser.close()
-            print('✅ Screenshot ذخیره شد: google_%s.png' % now)
+            print('✅✅ screenshot ذخیره شد: google_%s.png' % now)
         else:
-            print('❌ بعد از 30 بار چک، c.txt پیدا نشد')
+            print('😞 بعد 30 دقیقه چک کردن، c.txt پیدا نشد')
         "
     
     - name: Commit & Push
