@@ -1,64 +1,46 @@
-name: Google Screenshot + c.txt Monitor
+name: 1-Time c.txt Check
 on:
   workflow_dispatch:
   repository_dispatch:
     types: [flask-alive]
 
 permissions:
-  contents: read  # برای خوندن c.txt
+  contents: write
 
 jobs:
-  monitor:
+  check:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: 🔍 Check c.txt Content
-      id: check_txt
+    - name: 🔍 1 بار چک c.txt
+      id: check
       run: |
         if [ -f "c.txt" ]; then
-          echo "✅ c.txt پیدا شد!"
-          echo "📄 محتوا:"
-          cat c.txt
-          echo "file_exists=true" >> $GITHUB_OUTPUT
-          echo "content=$(cat c.txt)" >> $GITHUB_OUTPUT
+          echo "✅ c.txt پیدا شد! $(cat c.txt)"
+          echo "found=true" >> $GITHUB_OUTPUT
         else
-          echo "❌ c.txt پیدا نشد!"
-          echo "file_exists=false" >> $GITHUB_OUTPUT
+          echo "❌ c.txt نیست"
+          echo "found=false" >> $GITHUB_OUTPUT
         fi
     
-    - name: 🖥️ Flask Log
-      if: steps.check_txt.outputs.file_exists == 'true'
-      run: |
-        echo "🎉 Flask فعاله! c.txt: ${{ steps.check_txt.outputs.content }}"
-        echo "📱 Google screenshot شروع..."
-    
-    - name: Setup Python & Screenshot
-      if: steps.check_txt.outputs.file_exists == 'true'
+    - name: 📱 Screenshot (فقط 1 بار)
+      if: steps.check.outputs.found == 'true'
       run: |
         pip install playwright pillow
         playwright install chromium
-        
-        python -c "
-        from playwright.sync_api import sync_playwright
-        import datetime
-        now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto('https://www.google.com')
-            page.screenshot(path=f'google_{now}.png', full_page=True)
-            browser.close()
-        "
+        python -c "from playwright.sync_api import sync_playwright; import datetime; now=datetime.datetime.now().strftime('%Y%m%d_%H%M'); with sync_playwright() as p: b=p.chromium.launch(headless=True); page=b.new_page(); page.goto('https://www.google.com'); page.screenshot(path=f'google_{now}.png'); b.close()"
     
-    - name: Git Commit
-      if: steps.check_txt.outputs.file_exists == 'true'
+    - name: 💾 Commit
       run: |
-        git config user.name "Flask Monitor"
+        git config user.name "1-Time Check"
         git config user.email "action@github.com"
-        git add google_*.png c.txt
-        git commit -m "🌐 Screenshot + c.txt monitor $(date +%Y-%m-%d_%H-%M)" || exit 0
-        git pull origin main --rebase
-        git push origin main --force-with-lease
+        if [ "${{ steps.check.outputs.found }}" = "true" ]; then
+          git add google_*.png c.txt
+          git commit -m "✅ c.txt پیدا شد + Screenshot"
+        else
+          git commit --allow-empty -m "❌ c.txt نیست"
+        fi
+        git push origin main --force
