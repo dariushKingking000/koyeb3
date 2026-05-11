@@ -1,4 +1,4 @@
-name: 1-Time c.txt Check
+name: c.txt Smart Monitor
 on:
   workflow_dispatch:
   repository_dispatch:
@@ -8,39 +8,58 @@ permissions:
   contents: write
 
 jobs:
-  check:
+  monitor:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: 🔍 1 بار چک c.txt
-      id: check
+    - name: 🔍 Check c.txt تا پیدا بشه (حداکثر ۳۰ دور)
+      id: smart_check
       run: |
-        if [ -f "c.txt" ]; then
-          echo "✅ c.txt پیدا شد! $(cat c.txt)"
-          echo "found=true" >> $GITHUB_OUTPUT
-        else
-          echo "❌ c.txt نیست"
-          echo "found=false" >> $GITHUB_OUTPUT
-        fi
+        echo "🔎 منتظر c.txt (حداکثر ۳۰ دقیقه)..."
+        for i in {1..30}; do
+          if [ -f "c.txt" ]; then
+            echo "✅ دور $i - c.txt پیدا شد! $(cat c.txt)"
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "round=$i" >> $GITHUB_OUTPUT
+            exit 0  # فوراً خارج شو!
+          fi
+          echo "⏳ دور $i/30 - منتظر... (۱ دقیقه)"
+          sleep 60
+        done
+        echo "❌ ۳۰ دور تمام - c.txt نیست"
+        echo "found=false" >> $GITHUB_OUTPUT
     
-    - name: 📱 Screenshot (فقط 1 بار)
-      if: steps.check.outputs.found == 'true'
+    - name: 📱 Screenshot (فقط اگر پیدا شد)
+      if: steps.smart_check.outputs.found == 'true'
       run: |
         pip install playwright pillow
         playwright install chromium
-        python -c "from playwright.sync_api import sync_playwright; import datetime; now=datetime.datetime.now().strftime('%Y%m%d_%H%M'); with sync_playwright() as p: b=p.chromium.launch(headless=True); page=b.new_page(); page.goto('https://www.google.com'); page.screenshot(path=f'google_{now}.png'); b.close()"
+        python -c "
+        from playwright.sync_api import sync_playwright
+        import datetime
+        now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+        with sync_playwright() as p:
+            b = p.chromium.launch(headless=True)
+            page = b.new_page()
+            page.goto('https://www.google.com')
+            page.screenshot(path=f'google_FOUND_r${{ steps.smart_check.outputs.round }}_{now}.png')
+            b.close()
+        "
     
-    - name: 💾 Commit
+    - name: 💾 Final Commit
       run: |
-        git config user.name "1-Time Check"
+        git config user.name "c.txt Detector"
         git config user.email "action@github.com"
-        if [ "${{ steps.check.outputs.found }}" = "true" ]; then
+        
+        if [ "${{ steps.smart_check.outputs.found }}" = "true" ]; then
           git add google_*.png c.txt
-          git commit -m "✅ c.txt پیدا شد + Screenshot"
+          git commit -m "✅ c.txt دور ${{ steps.smart_check.outputs.round }} پیدا شد + Screenshot"
         else
-          git commit --allow-empty -m "❌ c.txt نیست"
+          git commit --allow-empty -m "❌ c.txt بعد ۳۰ دور پیدا نشد"
         fi
-        git push origin main --force
+        
+        git pull origin main --rebase
+        git push origin main --force-with-lease
