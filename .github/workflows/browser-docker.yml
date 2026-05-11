@@ -1,0 +1,27 @@
+name: Google Browser Docker
+
+on:
+  repository_dispatch:
+    types: [open_google, take_screenshot, copy_page, click_page]
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright/python:v1.44.0-jammy
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Browser
+      run: |
+        EVENT="${{ github.event.client_payload.event_type }}"
+        X="${{ github.event.client_payload.x || 500 }}"
+        Y="${{ github.event.client_payload.y || 300 }}"
+        python browser.py "$EVENT" "$X" "$Y"
+        
+    - name: Upload Screenshot
+      if: github.event.client_payload.event_type == 'take_screenshot'
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshot
+        path: /tmp/google.png
