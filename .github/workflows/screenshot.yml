@@ -5,61 +5,58 @@ on:
     types: [flask-alive]
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+    - name: 🔍 Clone Target Repo
+      run: |
+        git clone https://github.com/dariushKingking000/koyeb3.git target-repo
+        cd target-repo
+        echo "📂 Target repo cloned: $(ls -la)"
     
-    - name: 🔍 Check c.txt تا پیدا بشه (حداکثر ۳۰ دور)
+    - name: 🔍 Check c.txt در koyeb3 (حداکثر ۳۰ دور)
       id: smart_check
       run: |
-        echo "🔎 منتظر c.txt (حداکثر ۳۰ دقیقه)..."
+        echo "🔎 منتظر c.txt در https://github.com/dariushKingking000/koyeb3 (حداکثر ۳۰ دقیقه)..."
+        cd target-repo
         for i in {1..30}; do
           if [ -f "c.txt" ]; then
             echo "✅ دور $i - c.txt پیدا شد! $(cat c.txt)"
             echo "found=true" >> $GITHUB_OUTPUT
             echo "round=$i" >> $GITHUB_OUTPUT
-            exit 0  # فوراً خارج شو!
+            echo "content=$(cat c.txt)" >> $GITHUB_OUTPUT
+            exit 0
           fi
-          echo "⏳ دور $i/30 - منتظر... (۱ دقیقه)"
+          echo "⏳ دور $i/30 - c.txt نیست، pull کنیم..."
+          git pull origin main --quiet || true
+          echo "📂 Current files: $(ls -la)"
           sleep 60
         done
-        echo "❌ ۳۰ دور تمام - c.txt نیست"
+        echo "❌ ۳۰ دور تمام - c.txt در koyeb3 پیدا نشد"
         echo "found=false" >> $GITHUB_OUTPUT
     
-    - name: 📱 Screenshot (فقط اگر پیدا شد)
-      if: steps.smart_check.outputs.found == 'true'
+    - name: 📋 Show Final Status & Logs
       run: |
-        pip install playwright pillow
-        playwright install chromium
-        python -c "
-        from playwright.sync_api import sync_playwright
-        import datetime
-        now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-        with sync_playwright() as p:
-            b = p.chromium.launch(headless=True)
-            page = b.new_page()
-            page.goto('https://www.google.com')
-            page.screenshot(path=f'google_FOUND_r${{ steps.smart_check.outputs.round }}_{now}.png')
-            b.close()
-        "
+        echo "🎯 Target: https://github.com/dariushKingking000/koyeb3"
+        echo "✅ Result: found=${{ steps.smart_check.outputs.found }}"
+        echo "🔢 Round: ${{ steps.smart_check.outputs.round || 'N/A' }}"
+        echo "📄 Content: ${{ steps.smart_check.outputs.content || 'N/A' }}"
+        echo "📂 Final files:"
+        ls -la target-repo/ || true
+        echo "🕒 تمام لاگ‌های ۳۰ دور در Actions tab قابل مشاهده"
     
-    - name: 💾 Final Commit
+    - name: 💾 Create Status File (اختیاری)
+      if: always()
       run: |
-        git config user.name "c.txt Detector"
-        git config user.email "action@github.com"
-        
-        if [ "${{ steps.smart_check.outputs.found }}" = "true" ]; then
-          git add google_*.png c.txt
-          git commit -m "✅ c.txt دور ${{ steps.smart_check.outputs.round }} پیدا شد + Screenshot"
-        else
-          git commit --allow-empty -m "❌ c.txt بعد ۳۰ دور پیدا نشد"
-        fi
-        
-        git pull origin main --rebase
-        git push origin main --force-with-lease
+        cat > status.txt << EOF
+        Timestamp: $(date)
+        Target: https://github.com/dariushKingking000/koyeb3
+        Found: ${{ steps.smart_check.outputs.found }}
+        Round: ${{ steps.smart_check.outputs.round || 'N/A' }}
+        Content: ${{ steps.smart_check.outputs.content || 'N/A' }}
+        EOF
+        echo "::notice:: Status file created with results"
