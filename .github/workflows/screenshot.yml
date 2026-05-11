@@ -35,23 +35,23 @@ jobs:
         print('🔍 شروع چک کردن c.txt در repo: https://github.com/dariushKingking000/koyeb3')
         
         def check_c_txt():
-            headers = {'Authorization': f'token {os.getenv('GITHUB_TOKEN')}'}
+            headers = {'Authorization': 'token ' + os.getenv('GITHUB_TOKEN')}
             try:
                 response = requests.get(os.getenv('REPO_URL'), headers=headers)
-                print(f'[{datetime.datetime.now()}] ✅ درخواست API ارسال شد - Status: {response.status_code}')
+                print('[%s] ✅ درخواست API ارسال شد - Status: %s' % (datetime.datetime.now(), response.status_code))
                 if response.status_code == 200:
-                    print(f'[{datetime.datetime.now()}] 🎉 فایل c.txt پیدا شد! Screenshot میگیریم...')
+                    print('[%s] 🎉 فایل c.txt پیدا شد! Screenshot میگیریم...' % datetime.datetime.now())
                     return True
                 else:
-                    print(f'[{datetime.datetime.now()}] ❌ فایل c.txt پیدا نشد')
+                    print('[%s] ❌ فایل c.txt پیدا نشد' % datetime.datetime.now())
                     return False
             except Exception as e:
-                print(f'[{datetime.datetime.now()}] ❌ خطا در چک کردن: {str(e)}')
+                print('[%s] ❌ خطا در چک کردن: %s' % (datetime.datetime.now(), str(e)))
                 return False
         
         found = False
         for i in range(30):
-            print(f'[{datetime.datetime.now()}] 🔄 چک {i+1}/30 - انتظار 60 ثانیه...')
+            print('[%s] 🔄 چک %d/30 - انتظار 60 ثانیه...' % (datetime.datetime.now(), i+1))
             if check_c_txt():
                 found = True
                 break
@@ -64,9 +64,9 @@ jobs:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
                 page.goto('https://www.google.com')
-                page.screenshot(path=f'google_{now}.png', full_page=True)
+                page.screenshot(path='google_%s.png' % now, full_page=True)
                 browser.close()
-            print(f'✅ Screenshot ذخیره شد: google_{now}.png')
+            print('✅ Screenshot ذخیره شد: google_%s.png' % now)
         else:
             print('❌ بعد از 30 بار چک، c.txt پیدا نشد')
         "
