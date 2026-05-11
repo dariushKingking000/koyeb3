@@ -1,8 +1,7 @@
-name: Google Browser Docker
-
+name: Google Docker ✅
 on:
   repository_dispatch:
-    types: [open_google, take_screenshot, copy_page, click_page]
+    types: [screenshot, copy, click]
 
 jobs:
   browser:
@@ -12,16 +11,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Install Playwright
+      run: playwright install chromium
+    
     - name: Run Browser
-      run: |
-        EVENT="${{ github.event.client_payload.event_type }}"
-        X="${{ github.event.client_payload.x || 500 }}"
-        Y="${{ github.event.client_payload.y || 300 }}"
-        python browser.py "$EVENT" "$X" "$Y"
-        
-    - name: Upload Screenshot
-      if: github.event.client_payload.event_type == 'take_screenshot'
-      uses: actions/upload-artifact@v4
-      with:
-        name: screenshot
-        path: /tmp/google.png
+      run: python browser.py ${{ github.event.client_payload.event }}
