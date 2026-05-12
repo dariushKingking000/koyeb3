@@ -1,4 +1,4 @@
-name: Live Stream to Aparat - Always On
+name: Live Stream to Aparat - Stable
 on: [push]
 permissions:
   contents: write
@@ -91,6 +91,7 @@ jobs:
             with open(HISTORY_FILE, 'a') as f:
                 f.write(command + '\n')
             debug_print(f"💾 ذخیره در تاریخچه: {command}")
+            upload_history_to_repo()
         
         def get_c_txt_content():
             url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FILE_PATH}"
@@ -135,12 +136,33 @@ jobs:
                 debug_print(f"⚠️ دستور ناشناخته: {command}")
                 return False
         
+        def start_ffmpeg():
+            """راه‌اندازی ffmpeg با تنظیمات پایدار"""
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-f', 'rawvideo',
+                '-vcodec', 'rawvideo',
+                '-s', '1280x720',
+                '-pix_fmt', 'rgb24',
+                '-r', '5',  # کاهش به 5 فریم در ثانیه
+                '-i', '-',
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-tune', 'zerolatency',
+                '-b:v', '800k',  # کاهش بیت ریت
+                '-bufsize', '1600k',
+                '-g', '15',
+                '-f', 'flv',
+                '-flvflags', 'no_duration_filesize',
+                FULL_RTMP
+            ]
+            return sp.Popen(ffmpeg_cmd, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        
         def main():
             debug_print("🚀 شروع استریم زنده به آپارات")
             debug_print(f"🎯 RTMP: {RTMP_URL}")
             debug_print("🌐 مرورگر در حال باز شدن...")
             
-            # بارگذاری دستورات اجرا شده قبلی
             executed = load_executed_commands()
             
             with sync_playwright() as p:
@@ -150,39 +172,34 @@ jobs:
                 debug_print("✅ صفحه گوگل باز شد")
                 
                 # راه‌اندازی ffmpeg
-                ffmpeg_cmd = [
-                    'ffmpeg', '-y',
-                    '-f', 'rawvideo',
-                    '-vcodec', 'rawvideo',
-                    '-s', '1280x720',
-                    '-pix_fmt', 'rgb24',
-                    '-r', '10',
-                    '-i', '-',
-                    '-c:v', 'libx264',
-                    '-preset', 'ultrafast',
-                    '-b:v', '1200k',
-                    '-g', '30',
-                    '-f', 'flv',
-                    FULL_RTMP
-                ]
+                ffmpeg_proc = start_ffmpeg()
+                debug_print("🎥 ffmpeg راه‌اندازی شد")
                 
-                ffmpeg_proc = sp.Popen(ffmpeg_cmd, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-                debug_print("🎥 ffmpeg راه‌اندازی شد، استریم به آپارات...")
-                
-                # حلقه اصلی - هم مرورگر و هم چک کردن دستورات
                 last_check_time = time.time()
+                frame_time = time.time()
                 
                 try:
                     while True:
-                        # گرفتن فریم و ارسال به ffmpeg (هر 0.1 ثانیه)
-                        try:
-                            screenshot = page.screenshot(type='png')
-                            ffmpeg_proc.stdin.write(screenshot)
-                        except Exception as e:
-                            debug_print(f"⚠️ خطا در گرفتن فریم: {e}")
+                        # گرفتن فریم هر 0.2 ثانیه (5 فریم در ثانیه)
+                        current_time = time.time()
+                        
+                        if current_time - frame_time >= 0.2:
+                            frame_time = current_time
+                            try:
+                                if ffmpeg_proc and ffmpeg_proc.stdin:
+                                    screenshot = page.screenshot(type='png')
+                                    ffmpeg_proc.stdin.write(screenshot)
+                            except (BrokenPipeError, Exception) as e:
+                                debug_print(f"⚠️ خطا در ffmpeg، راه‌اندازی مجدد...")
+                                if ffmpeg_proc:
+                                    try:
+                                        ffmpeg_proc.stdin.close()
+                                    except:
+                                        pass
+                                    ffmpeg_proc.wait(timeout=2)
+                                ffmpeg_proc = start_ffmpeg()
                         
                         # چک کردن دستورات هر 30 ثانیه
-                        current_time = time.time()
                         if current_time - last_check_time >= 30:
                             last_check_time = current_time
                             
@@ -193,27 +210,27 @@ jobs:
                                 
                                 if new_commands:
                                     debug_print(f"✨ {len(new_commands)} دستور جدید: {new_commands}")
-                                    
                                     for command in new_commands:
                                         if execute_command(page, command):
                                             save_executed_command(command)
                                             executed.add(command)
                                         time.sleep(0.5)
-                                    
-                                    # آپلود تاریخچه
-                                    upload_history_to_repo()
                                 else:
                                     debug_print("🎥 استریم فعال - منتظر دستور...")
                             else:
                                 debug_print("⚠️ c.txt پیدا نشد")
                         
-                        time.sleep(0.1)  # فریم ریت ~10 فریم در ثانیه
+                        time.sleep(0.1)  # جلوگیری از مصرف بالای CPU
                         
                 except KeyboardInterrupt:
                     debug_print("🛑 در حال بستن...")
                 finally:
-                    ffmpeg_proc.stdin.close()
-                    ffmpeg_proc.wait()
+                    if ffmpeg_proc:
+                        try:
+                            ffmpeg_proc.stdin.close()
+                        except:
+                            pass
+                        ffmpeg_proc.wait()
                     browser.close()
         
         if __name__ == "__main__":
