@@ -39,6 +39,7 @@ jobs:
           import sys
           import uuid
           import random
+          import socket
           from patchright.sync_api import sync_playwright
 
           def debug_print(msg):
@@ -55,6 +56,13 @@ jobs:
               'Authorization': f'token {GITHUB_TOKEN}',
               'Accept': 'application/vnd.github.v3+json'
           }
+
+          # IP های گوگل (بایپس DNS)
+          GOOGLE_IPS = [
+              "142.250.185.46",   # google.com
+              "172.217.168.46",   # google.com
+              "216.58.214.46",    # google.com
+          ]
 
           def upload_frame(frame_data, description=""):
               unique_id = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
@@ -133,6 +141,14 @@ jobs:
 
               last_command = None
 
+              # تست اتصال DNS
+              debug_print("🔍 تست اتصال به اینترنت...")
+              try:
+                  socket.gethostbyname('google.com')
+                  debug_print("✅ DNS کار می‌کند")
+              except:
+                  debug_print("⚠️ DNS مشکل دارد، استفاده از IP مستقیم")
+
               with sync_playwright() as p:
                   browser = p.chromium.launch(
                       headless=True,
@@ -143,12 +159,14 @@ jobs:
                           '--disable-gpu',
                           '--disable-software-rasterizer',
                           '--disable-features=VizDisplayCompositor',
+                          '--dns-prefetch-disable',  # غیرفعال کردن DNS prefetch
                       ]
                   )
                   
                   context = browser.new_context(
                       viewport={'width': 1280, 'height': 720},
                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+                      ignore_https_errors=True,  # مهم!
                   )
                   
                   page = context.new_page()
@@ -158,17 +176,27 @@ jobs:
                       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                   """)
                   
-                  # با timeout بیشتر و ignore HTTPS errors
                   page.set_default_timeout(60000)
                   
                   debug_print("🌐 رفتن به گوگل...")
-                  try:
-                      page.goto('https://www.google.com', wait_until='domcontentloaded', timeout=60000)
-                  except Exception as e:
-                      debug_print(f"⚠️ تلاش با load: {e}")
-                      page.goto('https://www.google.com', wait_until='load', timeout=60000)
                   
-                  time.sleep(3)
+                  # تلاش با IP مستقیم
+                  success = False
+                  for ip in GOOGLE_IPS:
+                      try:
+                          debug_print(f"🔄 تلاش با IP: {ip}")
+                          page.goto(f'https://{ip}', wait_until='domcontentloaded', timeout=30000)
+                          success = True
+                          debug_print(f"✅ با IP {ip} باز شد")
+                          break
+                      except Exception as e:
+                          debug_print(f"⚠️ IP {ip} جواب نداد: {e}")
+                  
+                  if not success:
+                      debug_print("❌ هیچ IP جواب نداد، در حال بسته شدن...")
+                      return
+                  
+                  time.sleep(2)
                   debug_print("✅ گوگل باز شد")
 
                   screenshot = page.screenshot(type='png')
