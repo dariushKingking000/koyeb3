@@ -1,63 +1,21 @@
 name: Google Screenshot to Repo
-on:
-  workflow_dispatch:
-  repository_dispatch:
-    types: [flask-alive]
+on:9ع9عorkflow_dispatch:
+  repos9ry_dispatch:
+    t8es: [flask-alive]
 
 permissions:
-  contents: write
-
-jobs:
-  screenshot:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0  # کل history رو بگیر
+  c8899ontents: write
+899ith:
+      78  tokمتتختختخهتen: ${{ secrets.GITHUB_TOKEN }}
+   098     fetch-depth: 0  # کل history رو بگیر
     
-    - name: Setup Python
-      uses: actions/setup-python@v5
+اses: acti98ons/setup-python@v5
       with:
-        python-version: '3.11'
-    
+        pyt8ا
     - name: Install Playwright
-      run: |
-        pip install playwright pillow
-        playwright install chromium
-    
-    - name: 🖥️ Flask Active Log
-      run: |
-        echo "✅ Flask از کامپیوتر کاربر فعال شد!"
-        echo "📱 Google screenshot در حال گرفتن..."
-    
-    - name: Google Screenshot
-      id: screenshot
-      run: |
+  ه run: |
+  د      pip install playwright pillow
+  هد    playwright inst
         python -c "
         from playwright.sync_api import sync_playwright
         import datetime
-        now = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto('https://www.google.com')
-            page.screenshot(path=f'google_{now}.png', full_page=True)
-            browser.close()
-        print('screenshot_file=google_' + now + '.png')
-        "
-    
-    - name: Git Pull & Push
-      run: |
-        git config user.name "Flask + GitHub Action"
-        git config user.email "action@github.com"
-        
-        # Pull latest changes
-        git pull origin main --rebase
-        
-        # Add screenshot
-        git add google_*.png
-        git commit -m "🌐 Google screenshot - Flask Triggered $(date +%Y-%m-%d_%H-%M)" || echo "No changes to commit"
-        
-        # Force push (حل conflict)
-        git push origin main --force-with-lease
