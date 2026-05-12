@@ -7,7 +7,7 @@ permissions:
 
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # تغییر به ویندوز
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
@@ -20,15 +20,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Patchright
+      - name: Install Playwright
         run: |
-          pip install patchright
-          patchright install chromium
+          pip install playwright
+          playwright install chromium
           pip install requests
 
       - name: Run Remote Browser Server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           cat > remote_browser.py << 'EOF'
           import requests
@@ -39,7 +40,7 @@ jobs:
           import sys
           import uuid
           import random
-          from patchright.sync_api import sync_playwright
+          from playwright.sync_api import sync_playwright
 
           def debug_print(msg):
               print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
@@ -122,61 +123,30 @@ jobs:
 
               else:
                   debug_print(f"⌨️ تایپ: {command}")
-                  for ch in command:
-                      page.keyboard.type(ch, delay=random.randint(30, 100))
-                      time.sleep(random.uniform(0.02, 0.08))
+                  page.keyboard.type(command, delay=random.randint(30, 100))
                   return True
 
           def main():
-              debug_print("🚀 شروع")
+              debug_print("🚀 شروع (Windows)")
               debug_print("📋 منتظر دستورات...")
 
               last_command = None
 
               with sync_playwright() as p:
-                  browser = p.chromium.launch(
-                      headless=True,
-                      args=[
-                          '--no-sandbox',
-                          '--disable-dev-shm-usage',
-                          '--disable-setuid-sandbox',
-                          '--disable-gpu',
-                      ]
-                  )
-                  
+                  browser = p.chromium.launch(headless=True)
                   context = browser.new_context(
                       viewport={'width': 1280, 'height': 720},
                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-                      ignore_https_errors=True,
                   )
-                  
                   page = context.new_page()
                   
-                  # مخفی کردن webdriver
                   page.add_init_script("""
                       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                   """)
                   
-                  page.set_default_timeout(60000)
-                  
-                  debug_print("🌐 رفتن به example.com...")
-                  
-                  # استفاده از IP گوگل به جای نام دامنه
-                  try:
-                      page.goto('https://www.example.com', wait_until='domcontentloaded', timeout=30000)
-                      debug_print(f"✅ باز شد: {page.url}")
-                  except Exception as e:
-                      debug_print(f"❌ خطا: {str(e)[:100]}")
-                      debug_print("🔄 تلاش با httpbin...")
-                      try:
-                          page.goto('https://httpbin.org/html', wait_until='domcontentloaded', timeout=30000)
-                          debug_print(f"✅ باز شد: {page.url}")
-                      except Exception as e2:
-                          debug_print(f"❌ خطا: {str(e2)[:100]}")
-                          debug_print("🔄 تلاش با about:blank...")
-                          page.goto('about:blank')
-                  
-                  time.sleep(2)
+                  debug_print("🌐 رفتن به google.com...")
+                  page.goto('https://www.google.com', timeout=60000)
+                  debug_print(f"✅ باز شد: {page.url}")
 
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
@@ -184,10 +154,8 @@ jobs:
                   while True:
                       try:
                           content = get_c_txt_content()
-
                           if content and content != last_command and not content.startswith('#'):
                               debug_print(f"📖 دستور: {content}")
-
                               if execute_command(page, content):
                                   last_command = content
                                   time.sleep(0.5)
@@ -196,9 +164,7 @@ jobs:
                                   clear_c_txt()
                               else:
                                   clear_c_txt()
-
                           time.sleep(1)
-
                       except Exception as e:
                           debug_print(f"💥 خطا: {e}")
                           time.sleep(5)
@@ -207,4 +173,4 @@ jobs:
               main()
           EOF
 
-          python3 remote_browser.py
+          python remote_browser.py
