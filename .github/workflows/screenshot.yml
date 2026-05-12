@@ -108,6 +108,7 @@ jobs:
                           x, y = int(parts[1]), int(parts[2])
                           debug_print(f"Click at ({x}, {y})")
                           page.mouse.click(x, y)
+                          time.sleep(0.3)
                           return True
                       except ValueError:
                           debug_print(f"Invalid coordinates")
@@ -119,12 +120,17 @@ jobs:
               elif cmd_lower == "enter":
                   debug_print("Enter pressed")
                   page.keyboard.press("Enter")
+                  time.sleep(0.3)
+                  return True
+
+              elif cmd_lower.startswith('#') or cmd_lower.startswith('//'):
+                  debug_print(f"Comment/Skip: {command}")
                   return True
 
               else:
                   debug_print(f"Typing: [{command}]")
                   page.keyboard.type(command, delay=random.randint(30, 80))
-                  debug_print(f"Typing complete")
+                  time.sleep(0.3)
                   return True
 
           def main():
@@ -153,14 +159,13 @@ jobs:
                       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                   """)
                   
-                  # رفتن به Bing (پایدارتر از گوگل و DuckDuckGo)
                   debug_print("Going to Bing...")
                   page.goto('https://www.bing.com', wait_until='domcontentloaded', timeout=60000)
                   debug_print(f"Opened: {page.url}")
                   
                   time.sleep(2)
                   
-                  # کلیک روی باکس جستجوی Bing
+                  # کلیک روی باکس جستجو
                   try:
                       search_box = page.locator('#sb_form_q')
                       if search_box.count() > 0:
@@ -179,22 +184,36 @@ jobs:
                       try:
                           content = get_c_txt_content()
                           
-                          if content and content != last_command and not content.startswith('#'):
-                              debug_print(f"NEW COMMAND: {content}")
+                          if content and content != last_command:
+                              lines = content.strip().split('\n')
                               
-                              if execute_command(page, content):
-                                  last_command = content
-                                  time.sleep(0.8)
+                              # فیلتر کردن خطوط خالی و کامنت
+                              commands_list = [line.strip() for line in lines if line.strip() and not line.strip().startswith('#') and not line.strip().startswith('//')]
+                              
+                              if commands_list:
+                                  debug_print(f"FOUND {len(commands_list)} COMMANDS")
+                                  
+                                  # اجرای همه دستورات
+                                  for cmd in commands_list:
+                                      debug_print(f"Running: {cmd}")
+                                      execute_command(page, cmd)
+                                      time.sleep(0.2)
+                                  
+                                  # بعد از اجرای همه دستورات، یک فریم بگیر
+                                  time.sleep(0.5)
                                   screenshot = page.screenshot(type='png')
-                                  upload_frame(screenshot, f"after")
+                                  upload_frame(screenshot, f"result_{len(commands_list)}cmds")
+                                  debug_print(f"Frame taken after {len(commands_list)} commands")
+                                  
                                   clear_c_txt()
+                                  last_command = content
                               else:
-                                  clear_c_txt()
+                                  time.sleep(5)
                           else:
                               time.sleep(5)
                               
                       except Exception as e:
-                          debug_print(f"Error: {e}")
+                          debug_print(f"Error in main loop: {e}")
                           time.sleep(5)
 
           if __name__ == "__main__":
