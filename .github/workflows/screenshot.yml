@@ -1,4 +1,4 @@
-name: Live Stream to Aparat with Commands
+name: Live Stream to Aparat - Always On
 on: [push]
 permissions:
   contents: write
@@ -18,7 +18,7 @@ jobs:
         pip install playwright requests
         playwright install chromium
     
-    - name: Run Stream with Command Watcher
+    - name: Run Continuous Stream with Command Watcher
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       shell: bash
@@ -31,6 +31,7 @@ jobs:
         import base64
         import sys
         import subprocess as sp
+        import threading
         from playwright.sync_api import sync_playwright
         
         def debug_print(msg):
@@ -43,7 +44,6 @@ jobs:
         FILE_PATH = "c.txt"
         HISTORY_FILE = "executed_commands.txt"
         
-        # اطلاعات RTMP آپارات (مستقیم توی کد)
         RTMP_URL = "rtmp://rtmp.cdn.asset.aparat.com:443/event"
         STREAM_KEY = "e83de8cf9afbf569b17e1addf487ed275?s=b01212e4d2d99292"
         FULL_RTMP = f"{RTMP_URL}/{STREAM_KEY}"
@@ -54,8 +54,11 @@ jobs:
             'Accept': 'application/vnd.github.v3+json'
         }
         
+        # متغیرهای سراسری برای دسترسی به page از تردهای مختلف
+        current_page = None
+        ffmpeg_proc = None
+        
         def upload_history_to_repo():
-            """آپلود history به ریپو"""
             try:
                 with open(HISTORY_FILE, 'rb') as f:
                     content = base64.b64encode(f.read()).decode('utf-8')
@@ -75,10 +78,7 @@ jobs:
                 data["sha"] = sha
             
             put_response = requests.put(url, headers=headers, json=data)
-            if put_response.status_code in [200, 201]:
-                debug_print("✅ تاریخچه آپلود شد")
-                return True
-            return False
+            return put_response.status_code in [200, 201]
         
         def load_executed_commands():
             try:
@@ -106,173 +106,142 @@ jobs:
                 debug_print(f"❌ خطا: {e}")
                 return None
         
-        def execute_commands(page, commands, executed_set):
-            """اجرای دستورات و برگردوندن دستورات جدید اجرا شده"""
-            new_executed = []
-            for command in commands:
-                if command in executed_set:
-                    debug_print(f"⏭️ تکراری: {command}")
-                    continue
-                
-                cmd_lower = command.lower().strip()
-                
-                if cmd_lower.startswith('click '):
-                    parts = cmd_lower.split()
-                    if len(parts) == 3:
-                        try:
-                            x, y = int(parts[1]), int(parts[2])
-                            debug_print(f"🖱️ کلیک ({x}, {y})")
-                            page.mouse.click(x, y)
-                            new_executed.append(command)
-                            save_executed_command(command)
-                            time.sleep(0.5)
-                        except ValueError:
-                            debug_print(f"⚠️ مختصات نامعتبر")
-                
-                elif cmd_lower.startswith('type '):
-                    parts = command.split(' ', 1)
-                    if len(parts) == 2:
-                        debug_print(f"⌨️ تایپ: {parts[1]}")
-                        page.keyboard.type(parts[1])
-                        new_executed.append(command)
-                        save_executed_command(command)
-                        time.sleep(0.5)
-                    else:
-                        debug_print(f"⚠️ دستور type نامعتبر")
-                
-                else:
-                    debug_print(f"⚠️ دستور ناشناخته: {command}")
-            
-            return new_executed
+        def capture_and_stream():
+            """گرفتن فریم از صفحه و ارسال به ffmpeg"""
+            global current_page, ffmpeg_proc
+            while True:
+                try:
+                    if current_page and ffmpeg_proc and ffmpeg_proc.stdin:
+                        screenshot = current_page.screenshot(type='png')
+                        ffmpeg_proc.stdin.write(screenshot)
+                    time.sleep(0.1)  # 10 فریم در ثانیه
+                except (BrokenPipeError, Exception) as e:
+                    debug_print(f"⚠️ خطا در گرفتن فریم: {e}")
+                    time.sleep(1)
         
-        def run_stream():
-            debug_print("🚀 شروع واتچر با استریم زنده به آپارات")
-            debug_print(f"🎯 RTMP: {RTMP_URL}")
-            debug_print(f"📁 ریپوی مقصد: {TARGET_REPO_OWNER}/{TARGET_REPO_NAME}")
+        def execute_command(page, command):
+            """اجرای یک دستور روی صفحه"""
+            cmd_lower = command.lower().strip()
             
-            loop_count = 0
+            if cmd_lower.startswith('click '):
+                parts = cmd_lower.split()
+                if len(parts) == 3:
+                    try:
+                        x, y = int(parts[1]), int(parts[2])
+                        debug_print(f"🖱️ کلیک ({x}, {y})")
+                        page.mouse.click(x, y)
+                        return True
+                    except ValueError:
+                        debug_print(f"⚠️ مختصات نامعتبر")
+                        return False
+            
+            elif cmd_lower.startswith('type '):
+                parts = command.split(' ', 1)
+                if len(parts) == 2:
+                    debug_print(f"⌨️ تایپ: {parts[1]}")
+                    page.keyboard.type(parts[1])
+                    return True
+                else:
+                    debug_print(f"⚠️ دستور type نامعتبر")
+                    return False
+            
+            else:
+                debug_print(f"⚠️ دستور ناشناخته: {command}")
+                return False
+        
+        def command_watcher():
+            """ترد جداگانه برای چک کردن دستورات"""
+            global current_page
+            executed = load_executed_commands()
             
             while True:
-                loop_count += 1
-                debug_print(f"\n{'='*40} چک {loop_count} {'='*40}")
-                
                 try:
-                    # دریافت دستورات جدید
-                    executed = load_executed_commands()
                     content = get_c_txt_content()
                     
-                    if not content:
-                        debug_print("⚠️ c.txt پیدا نشد یا خالی")
-                        time.sleep(60)
-                        continue
-                    
-                    commands = [line.strip() for line in content.split('\n') if line.strip()]
-                    new_commands = [cmd for cmd in commands if cmd not in executed]
-                    
-                    if not new_commands:
-                        debug_print("ℹ️ هیچ دستور جدیدی نیست")
-                        time.sleep(60)
-                        continue
-                    
-                    debug_print(f"✨ {len(new_commands)} دستور جدید: {new_commands}")
-                    
-                    # ========== شروع استریم ==========
-                    debug_print("🎥 راه‌اندازی ffmpeg و ارسال به آپارات...")
-                    
-                    # راه‌اندازی ffmpeg برای استریم
-                    ffmpeg_cmd = [
-                        'ffmpeg', '-y',
-                        '-f', 'rawvideo',
-                        '-vcodec', 'rawvideo',
-                        '-s', '1280x720',
-                        '-pix_fmt', 'rgb24',
-                        '-r', '10',  # 10 فریم در ثانیه برای پایداری بیشتر
-                        '-i', '-',
-                        '-c:v', 'libx264',
-                        '-preset', 'ultrafast',
-                        '-b:v', '1200k',  # بیت‌ریت مناسب
-                        '-g', '30',
-                        '-f', 'flv',
-                        FULL_RTMP
-                    ]
-                    
-                    ffmpeg_proc = sp.Popen(ffmpeg_cmd, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-                    
-                    # راه‌اندازی مرورگر
-                    with sync_playwright() as p:
-                        browser = p.chromium.launch(headless=False)
-                        page = browser.new_page()
-                        page.goto('https://www.google.com')
-                        time.sleep(3)
+                    if content:
+                        commands = [line.strip() for line in content.split('\n') if line.strip()]
+                        new_commands = [cmd for cmd in commands if cmd not in executed]
                         
-                        debug_print("🌐 صفحه گوگل باز شد، شروع اجرای دستورات...")
-                        
-                        # اجرای دستورات و همزمان گرفتن فریم
-                        for i, cmd in enumerate(new_commands):
-                            debug_print(f"▶️ اجرا ({i+1}/{len(new_commands)}): {cmd}")
+                        if new_commands and current_page:
+                            debug_print(f"✨ {len(new_commands)} دستور جدید: {new_commands}")
                             
-                            # قبل از اجرا، چند فریم بگیر
-                            for _ in range(5):
-                                try:
-                                    screenshot = page.screenshot(type='png')
-                                    ffmpeg_proc.stdin.write(screenshot)
-                                    time.sleep(0.1)
-                                except:
-                                    pass
+                            for command in new_commands:
+                                if execute_command(current_page, command):
+                                    save_executed_command(command)
+                                    executed.add(command)
+                                time.sleep(0.5)
                             
-                            # اجرای دستور
-                            if cmd.lower().startswith('click'):
-                                parts = cmd.lower().split()
-                                if len(parts) == 3:
-                                    page.mouse.click(int(parts[1]), int(parts[2]))
-                            elif cmd.lower().startswith('type'):
-                                parts = cmd.split(' ', 1)
-                                if len(parts) == 2:
-                                    page.keyboard.type(parts[1])
-                            
-                            time.sleep(0.5)
-                            
-                            # بعد از اجرا، چند فریم بگیر
-                            for _ in range(10):
-                                try:
-                                    screenshot = page.screenshot(type='png')
-                                    ffmpeg_proc.stdin.write(screenshot)
-                                    time.sleep(0.1)
-                                except:
-                                    pass
-                            
-                            # ذخیره در تاریخچه
-                            if cmd not in executed:
-                                save_executed_command(cmd)
-                                executed.add(cmd)
-                        
-                        # گرفتن فریم‌های نهایی
-                        for _ in range(15):
-                            try:
-                                screenshot = page.screenshot(type='png')
-                                ffmpeg_proc.stdin.write(screenshot)
-                                time.sleep(0.1)
-                            except:
-                                pass
-                        
-                        browser.close()
+                            # آپلود تاریخچه بعد از اجرا
+                            upload_history_to_repo()
+                        else:
+                            # هر 30 ثانیه یکبار لاگ بده که زنده است
+                            debug_print("🎥 استریم فعال - منتظر دستور...")
+                    else:
+                        debug_print("⚠️ c.txt پیدا نشد")
                     
-                    # بستن ffmpeg
-                    ffmpeg_proc.stdin.close()
-                    ffmpeg_proc.wait(timeout=5)
-                    debug_print("✅ استریم به پایان رسید")
-                    
-                    # آپلود تاریخچه
-                    upload_history_to_repo()
+                    time.sleep(30)  # هر 30 ثانیه چک کن
                     
                 except Exception as e:
-                    debug_print(f"💥 خطا: {e}")
+                    debug_print(f"💥 خطا در واتچر: {e}")
+                    time.sleep(30)
+        
+        def main():
+            global current_page, ffmpeg_proc
+            
+            debug_print("🚀 شروع استریم زنده به آپارات")
+            debug_print(f"🎯 RTMP: {RTMP_URL}")
+            debug_print("🌐 مرورگر در حال باز شدن...")
+            
+            # راه‌اندازی مرورگر و ffmpeg
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=False)
+                current_page = browser.new_page()
+                current_page.goto('https://www.google.com')
+                debug_print("✅ صفحه گوگل باز شد")
                 
-                debug_print("⏳ صبر 60 ثانیه تا چک بعدی...")
-                time.sleep(60)
+                # راه‌اندازی ffmpeg برای استریم
+                ffmpeg_cmd = [
+                    'ffmpeg', '-y',
+                    '-f', 'rawvideo',
+                    '-vcodec', 'rawvideo',
+                    '-s', '1280x720',
+                    '-pix_fmt', 'rgb24',
+                    '-r', '10',
+                    '-i', '-',
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-b:v', '1200k',
+                    '-g', '30',
+                    '-f', 'flv',
+                    FULL_RTMP
+                ]
+                
+                ffmpeg_proc = sp.Popen(ffmpeg_cmd, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+                debug_print("🎥 ffmpeg راه‌اندازی شد، استریم به آپارات...")
+                
+                # راه‌اندازی ترد گرفتن فریم
+                capture_thread = threading.Thread(target=capture_and_stream, daemon=True)
+                capture_thread.start()
+                
+                # راه‌اندازی ترد واتچر دستورات
+                watcher_thread = threading.Thread(target=command_watcher, daemon=True)
+                watcher_thread.start()
+                
+                # نگه داشتن برنامه برای همیشه
+                try:
+                    while True:
+                        time.sleep(60)
+                        debug_print("💓 استریم依然稳定...")
+                except KeyboardInterrupt:
+                    debug_print("🛑 در حال بستن...")
+                finally:
+                    if ffmpeg_proc:
+                        ffmpeg_proc.stdin.close()
+                        ffmpeg_proc.wait()
+                    browser.close()
         
         if __name__ == "__main__":
-            run_stream()
+            main()
         EOF
         
         python3 streamer.py
