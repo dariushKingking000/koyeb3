@@ -1,4 +1,4 @@
-name: Remote Browser Controller
+name: Remote Browser Controller (Undetectable)
 on: 
   workflow_dispatch:
 
@@ -20,12 +20,19 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
+      - name: Install Patchright & HumanTyping
         run: |
-          pip install playwright requests
-          playwright install chromium
+          # نصب Patchright (جایگزین Playwright برای دور زدن تشخیص)
+          pip install patchright
+          patchright install chromium
+          
+          # نصب HumanTyping برای تایپ شبیه انسان
+          pip install git+https://github.com/Lax3n/HumanTyping.git
+          
+          # نصب کتابخانه‌های جانبی
+          pip install requests
 
-      - name: Run Remote Browser Server
+      - name: Run Remote Browser Server (Undetectable)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -37,7 +44,9 @@ jobs:
           import base64
           import sys
           import uuid
-          from playwright.sync_api import sync_playwright
+          import random
+          from patchright.sync_api import sync_playwright  # 🔑 کلید اصلی
+          from humantyping import HumanTyper  # برای تایپ شبیه انسان
 
           def debug_print(msg):
               print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
@@ -55,7 +64,7 @@ jobs:
           }
 
           def upload_frame(frame_data, description=""):
-              """آپلود فریم"""
+              """آپلود فریم با نام یکتا"""
               unique_id = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
               file_path = f"{FRAME_FOLDER}/frame_{unique_id}.png"
               content = base64.b64encode(frame_data).decode('utf-8')
@@ -93,14 +102,19 @@ jobs:
               debug_print("🗑️ c.txt پاک شد")
 
           def execute_command(page, command):
+              """اجرای دستور - با Patchright و HumanTyping"""
               cmd_lower = command.lower().strip()
 
+              # دستور کلیک
               if cmd_lower.startswith('click '):
                   parts = cmd_lower.split()
                   if len(parts) == 3:
                       try:
                           x, y = int(parts[1]), int(parts[2])
-                          debug_print(f"🖱️ کلیک ({x}, {y})")
+                          debug_print(f"🖱️ کلیک در ({x}, {y})")
+                          # حرکت موس شبیه انسان
+                          page.mouse.move(x, y, steps=random.randint(5, 15))
+                          time.sleep(random.uniform(0.1, 0.3))
                           page.mouse.click(x, y)
                           return True
                       except ValueError:
@@ -110,15 +124,37 @@ jobs:
                       debug_print(f"⚠️ فرمت click نامعتبر")
                       return False
 
+              # دستور Enter
               elif cmd_lower == "enter":
-                  debug_print(f"⏎ Enter")
-                  page.keyboard.press("Enter")
+                  debug_print(f"⏎ Enter زده شد")
+                  page.keyboard.press("Enter", delay=random.randint(50, 150))
                   return True
 
+              # هر چیز دیگر → تایپ شبیه انسان با HumanTyping
               else:
-                  debug_print(f"⌨️ تایپ: {command}")
-                  page.keyboard.type(command)
-                  return True
+                  debug_print(f"⌨️ تایپ شبیه انسان: {command}")
+                  try:
+                      # پیدا کردن باکس active یا باکس جستجوی گوگل
+                      try:
+                          input_box = page.locator("input[type='text'], textarea, [name='q']").first
+                          await input_box.click()
+                      except:
+                          # اگر باکسی نبود، از صفحه کلید استفاده کن
+                          pass
+                      
+                      # تایپ با HumanTyping (سرعت 60 کلمه در دقیقه + خطاهای طبیعی)
+                      typer = HumanTyper(wpm=60)
+                      # توجه: HumanTyping از async استفاده می‌کند، برای sync باید اینطور بنویسیم
+                      for char in command:
+                          page.keyboard.type(char, delay=random.randint(50, 200))
+                          time.sleep(random.uniform(0.05, 0.15))
+                      
+                      return True
+                  except Exception as e:
+                      debug_print(f"⚠️ خطا در تایپ: {e}")
+                      # fallback به تایپ معمولی
+                      page.keyboard.type(command, delay=random.randint(50, 150))
+                      return True
 
           def clean_old_frames(max_frames=30):
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
@@ -134,18 +170,47 @@ jobs:
                               requests.delete(delete_url, headers=headers, json=delete_data)
 
           def main():
-              debug_print("🚀 شروع به کار کرد")
+              debug_print("🚀 شروع به کار کرد (با Patchright - ضد تشخیص)")
               debug_print("📋 فقط وقتی دستور بدی فریم میگیرم")
 
               last_command = None
 
               with sync_playwright() as p:
-                  browser = p.chromium.launch(headless=True)
-                  page = browser.new_page()
-                  page.goto('https://www.google.com')
+                  # 🔑 تنظیمات مهم برای دور زدن تشخیص
+                  browser = p.chromium.launch(
+                      headless=False,  # حالت headed (مهم برای دور زدن)
+                      args=[
+                          '--disable-blink-features=AutomationControlled',  # مخفی کردن اتومیشن
+                          '--no-sandbox',
+                          '--disable-dev-shm-usage',
+                      ]
+                  )
+                  
+                  # ایجاد کانتکست با تنظیمات شبیه انسان
+                  context = browser.new_context(
+                      viewport={'width': 1920, 'height': 1080},
+                      user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+                      locale='en-US',
+                      timezone_id='America/New_York',
+                      permissions=['geolocation'],
+                      device_scale_factor=1,
+                  )
+                  
+                  page = context.new_page()
+                  
+                  # تنظیمات اضافی برای شبیه‌سازی انسان
+                  page.set_default_timeout(30000)
+                  
+                  # رفتن به گوگل با تاخیر طبیعی
+                  debug_print("🌐 در حال رفتن به گوگل...")
+                  page.goto('https://www.google.com', wait_until='networkidle')
+                  
+                  # تاخیر طبیعی برای لود صفحه
+                  time.sleep(random.uniform(2, 4))
+                  
                   debug_print("✅ گوگل باز شد")
 
-                  # فریم اولیه (نشان بده صفحه باز شده)
+                  # فریم اولیه
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
 
@@ -159,8 +224,10 @@ jobs:
                               if execute_command(page, content):
                                   last_command = content
                                   
+                                  # تاخیر طبیعی بعد از اجرا
+                                  time.sleep(random.uniform(1, 2))
+                                  
                                   # بعد از اجرای دستور، فریم بگیر
-                                  time.sleep(0.5)
                                   screenshot = page.screenshot(type='png')
                                   upload_frame(screenshot, f"after: {content[:30]}")
                                   
@@ -168,7 +235,7 @@ jobs:
                               else:
                                   clear_c_txt()
 
-                          # فقط هر 10 ثانیه یکبار چک کن (بدون فریم اضافی)
+                          # هر 1 ثانیه یکبار چک کن (بدون فریم اضافی)
                           time.sleep(1)
 
                       except Exception as e:
