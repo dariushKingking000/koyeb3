@@ -24,7 +24,6 @@ jobs:
     - name: Run Command Watcher
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        REPO_NAME: ${{ github.repository }}
       shell: bash
       run: |
         cat > watcher.py << 'EOF'
@@ -36,13 +35,13 @@ jobs:
         import sys
         from playwright.sync_api import sync_playwright
         
-        # تابع print با فلاش فوری
         def debug_print(msg):
             print(msg)
             sys.stdout.flush()
         
-        REPO_OWNER = "dariushKingking000"
-        REPO_NAME = "koyeb3"
+        # ریپوی مقصد برای ذخیره عکس‌ها
+        TARGET_REPO_OWNER = "dariushKingking000"
+        TARGET_REPO_NAME = "koyeb3"
         FILE_PATH = "c.txt"
         HISTORY_FILE = "executed_commands.txt"
         GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
@@ -51,6 +50,35 @@ jobs:
             'Authorization': f'token {GITHUB_TOKEN}',
             'Accept': 'application/vnd.github.v3+json'
         }
+        
+        def upload_file_to_repo(file_path, commit_message):
+            """آپلود فایل به ریپوی koyeb3"""
+            with open(file_path, 'rb') as f:
+                content = base64.b64encode(f.read()).decode('utf-8')
+            
+            # بررسی وجود فایل
+            url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
+            response = requests.get(url, headers=headers)
+            sha = None
+            if response.status_code == 200:
+                sha = response.json().get('sha')
+            
+            # ایجاد یا آپدیت فایل
+            data = {
+                "message": commit_message,
+                "content": content,
+                "branch": "main"
+            }
+            if sha:
+                data["sha"] = sha
+            
+            put_response = requests.put(url, headers=headers, json=data)
+            if put_response.status_code in [200, 201]:
+                debug_print(f"✅ فایل {file_path} با موفقیت آپلود شد")
+                return True
+            else:
+                debug_print(f"❌ خطا در آپلود {file_path}: {put_response.status_code}")
+                return False
         
         def load_executed_commands():
             try:
@@ -65,7 +93,7 @@ jobs:
             debug_print(f"💾 ذخیره شد در تاریخچه: {command}")
         
         def get_c_txt_content():
-            url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
+            url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FILE_PATH}"
             try:
                 response = requests.get(url, headers=headers)
                 if response.status_code == 200:
@@ -117,8 +145,7 @@ jobs:
         
         def main_loop():
             debug_print("🚀 واتچر دستورات شروع به کار کرد")
-            debug_print("📋 هر 1 دقیقه فایل c.txt رو چک میکنم...")
-            debug_print("⏰ توجه: این حلقه تا 6 ساعت اجرا میشه بعد GitHub Action kill میکنه")
+            debug_print(f"🎯 ریپوی مقصد: {TARGET_REPO_OWNER}/{TARGET_REPO_NAME}")
             
             loop_count = 0
             while True:
@@ -128,28 +155,21 @@ jobs:
                 
                 try:
                     executed = load_executed_commands()
-                    debug_print(f"📜 تعداد دستورات اجرا شده قبلی: {len(executed)}")
                     
                     content = get_c_txt_content()
                     
                     if content:
                         commands = [line.strip() for line in content.split('\n') if line.strip()]
-                        debug_print(f"📄 تعداد دستورات داخل c.txt: {len(commands)}")
-                        
                         new_commands = [cmd for cmd in commands if cmd not in executed]
                         
                         if new_commands:
-                            debug_print(f"✨ {len(new_commands)} دستور جدید پیدا شد")
-                            
                             with sync_playwright() as p:
                                 browser = p.chromium.launch(headless=True)
                                 page = browser.new_page()
-                                debug_print("🌐 در حال رفتن به google.com...")
                                 page.goto('https://www.google.com')
                                 time.sleep(3)
                                 
                                 for command in new_commands:
-                                    debug_print(f"\n▶️ اجرا: {command}")
                                     if execute_command(page, command, executed):
                                         save_executed_command(command)
                                         executed.add(command)
@@ -160,12 +180,18 @@ jobs:
                                 page.screenshot(path=screenshot_name, full_page=True)
                                 debug_print(f"📸 اسکرین‌شات ذخیره شد: {screenshot_name}")
                                 browser.close()
+                            
+                            # آپلود عکس و تاریخچه به ریپوی koyeb3
+                            upload_file_to_repo(screenshot_name, f"📸 Google screenshot {now}")
+                            upload_file_to_repo(HISTORY_FILE, "📝 Update command history")
+                            
+                            # پاک کردن فایل محلی بعد از آپلود
+                            os.remove(screenshot_name)
                         else:
                             debug_print("ℹ️ هیچ دستور جدیدی پیدا نشد")
                     else:
                         debug_print("⚠️ فایل c.txt پیدا نشد یا خالی است")
                     
-                    debug_print(f"⏳ صبر 60 ثانیه تا چک بعدی...")
                     time.sleep(60)
                     
                 except Exception as e:
@@ -177,16 +203,3 @@ jobs:
         EOF
         
         python3 watcher.py
-    
-    - name: Commit & Push Screenshots
-      run: |
-        git config user.name "GitHub Action"
-        git config user.email "action@github.com"
-        git add google_*.png || true
-        git add executed_commands.txt || true
-        if git diff --staged --quiet; then
-          echo "هیچ تغییر جدیدی نیست"
-          exit 0
-        fi
-        git commit -m "📸 Screenshot and command history $(date +%Y-%m-%d_%H-%M-%S)"
-        git push origin HEAD:main
