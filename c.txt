@@ -1,1 +1,1 @@
-#waiting
+click 423 64
