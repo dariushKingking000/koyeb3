@@ -37,6 +37,7 @@ jobs:
           import os
           import base64
           import sys
+          import random
           from playwright.sync_api import sync_playwright
 
           def debug_print(msg):
@@ -55,26 +56,46 @@ jobs:
               'Accept': 'application/vnd.github.v3+json'
           }
 
+          # شمارنده سراسری برای فریم‌ها
+          frame_counter = 0
+
           def upload_frame(frame_data):
-              """آپلود فریم با نام یکتا (استفاده از timestamp)"""
-              timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-              file_path = f"{FRAME_FOLDER}/frame_{timestamp}.png"
+              """آپلود فریم با نام یکتا (timestamp + شمارنده + random)"""
+              global frame_counter
+              frame_counter += 1
+              
+              # نام فایل با ترکیبی از timestamp، شمارنده و random
+              timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+              random_num = random.randint(1000, 9999)
+              file_path = f"{FRAME_FOLDER}/frame_{timestamp}_{frame_counter}_{random_num}.png"
               
               content = base64.b64encode(frame_data).decode('utf-8')
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
               
               data = {
-                  "message": f"📸 Frame {timestamp}",
+                  "message": f"📸 Frame {frame_counter}",
                   "content": content,
                   "branch": "main"
               }
               
+              # ابتدا بررسی کن فایل وجود دارد یا نه
+              check_response = requests.get(url, headers=headers)
+              if check_response.status_code == 200:
+                  # فایل وجود دارد، نام جدید بساز
+                  file_path = f"{FRAME_FOLDER}/frame_{timestamp}_{frame_counter}_{random_num}_{int(time.time()*1000)}.png"
+                  url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
+                  data = {
+                      "message": f"📸 Frame {frame_counter}",
+                      "content": content,
+                      "branch": "main"
+                  }
+              
               put_response = requests.put(url, headers=headers, json=data)
               if put_response.status_code in [200, 201]:
-                  debug_print(f"✅ فریم آپلود شد: {file_path}")
+                  debug_print(f"✅ فریم {frame_counter} آپلود شد")
                   return True
               else:
-                  debug_print(f"❌ خطا در آپلود فریم: {put_response.status_code}")
+                  debug_print(f"❌ خطا در آپلود فریم {frame_counter}: {put_response.status_code}")
                   return False
 
           def get_c_txt_content():
@@ -112,8 +133,11 @@ jobs:
               if sha:
                   data["sha"] = sha
               
-              requests.put(url, headers=headers, json=data)
-              debug_print("🗑️ c.txt پاک شد")
+              put_response = requests.put(url, headers=headers, json=data)
+              if put_response.status_code in [200, 201]:
+                  debug_print("🗑️ c.txt پاک شد")
+              else:
+                  debug_print(f"⚠️ خطا در پاک کردن c.txt: {put_response.status_code}")
 
           def execute_command(page, command):
               """اجرای یک دستور روی صفحه"""
@@ -157,8 +181,8 @@ jobs:
                   debug_print(f"⚠️ دستور ناشناخته: {command}")
                   return False
 
-          def clean_old_frames(max_frames=50):
-              """پاک کردن فریم‌های قدیمی (فقط 50 تای آخر نگه دار)"""
+          def clean_old_frames(max_frames=100):
+              """پاک کردن فریم‌های قدیمی"""
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
               response = requests.get(url, headers=headers)
 
@@ -167,15 +191,16 @@ jobs:
                   if files and isinstance(files, list):
                       png_files = sorted([f for f in files if f['name'].endswith('.png')], 
                                         key=lambda x: x['name'])
-                      for old_file in png_files[:-max_frames]:
-                          delete_url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}/{old_file['name']}"
-                          delete_data = {
-                              "message": f"🗑️ حذف فریم قدیمی {old_file['name']}",
-                              "sha": old_file['sha'],
-                              "branch": "main"
-                          }
-                          requests.delete(delete_url, headers=headers, json=delete_data)
-                          debug_print(f"🗑️ حذف: {old_file['name']}")
+                      if len(png_files) > max_frames:
+                          for old_file in png_files[:-max_frames]:
+                              delete_url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}/{old_file['name']}"
+                              delete_data = {
+                                  "message": f"🗑️ حذف فریم قدیمی {old_file['name']}",
+                                  "sha": old_file['sha'],
+                                  "branch": "main"
+                              }
+                              requests.delete(delete_url, headers=headers, json=delete_data)
+                              debug_print(f"🗑️ حذف: {old_file['name']}")
 
           def ensure_frames_folder():
               """ایجاد پوشه frames اگر وجود ندارد"""
@@ -192,6 +217,7 @@ jobs:
                   debug_print("📁 پوشه frames ایجاد شد")
 
           def main():
+              global frame_counter
               debug_print("🚀 Remote Browser Server شروع به کار کرد")
               debug_print(f"🎯 ریپو: {TARGET_REPO_OWNER}/{TARGET_REPO_NAME}")
               debug_print("📋 منتظر دستورات از c.txt...")
@@ -199,6 +225,7 @@ jobs:
               ensure_frames_folder()
 
               last_command = None
+              frame_counter = 0
 
               with sync_playwright() as p:
                   browser = p.chromium.launch(headless=True)
@@ -229,18 +256,21 @@ jobs:
                                   screenshot = page.screenshot(type='png')
                                   upload_frame(screenshot)
                                   
-                                  # پاک کردن c.txt (برای جلوگیری از اجرای مجدد)
+                                  # پاک کردن c.txt
                                   clear_c_txt()
                               else:
                                   debug_print(f"⚠️ خطا در اجرای دستور: {content}")
+                                  # اگر دستور خطا داشت، باز هم c.txt را پاک کن تا دوباره اجرا نشود
+                                  clear_c_txt()
 
                           # هر 3 ثانیه یک فریم معمولی بگیر
                           time.sleep(3)
                           screenshot = page.screenshot(type='png')
                           upload_frame(screenshot)
 
-                          # هر چند وقت یکبار پاکسازی کن
-                          clean_old_frames(50)
+                          # هر 20 فریم یکبار پاکسازی کن
+                          if frame_counter % 20 == 0:
+                              clean_old_frames(100)
 
                       except Exception as e:
                           debug_print(f"💥 خطا: {e}")
