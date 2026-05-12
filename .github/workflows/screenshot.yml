@@ -42,6 +42,10 @@ jobs:
           import random
           from playwright.sync_api import sync_playwright
 
+          # Fix Windows encoding
+          if sys.platform == 'win32':
+              sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
           def debug_print(msg):
               print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
               sys.stdout.flush()
@@ -77,7 +81,6 @@ jobs:
                       content = response.json().get('content', '')
                       if content:
                           decoded = base64.b64decode(content).decode('utf-8')
-                          debug_print(f"c.txt content: {decoded[:50]}")
                           return decoded.strip()
                   return None
               except Exception as e:
@@ -99,6 +102,7 @@ jobs:
               cmd_lower = command.lower().strip()
               debug_print(f"EXECUTING: {command}")
               
+              # دستور کلیک
               if cmd_lower.startswith('click '):
                   parts = cmd_lower.split()
                   if len(parts) == 3:
@@ -114,22 +118,33 @@ jobs:
                       debug_print(f"Invalid click format")
                       return False
 
+              # دستور Enter
               elif cmd_lower == "enter":
                   debug_print("Enter pressed")
                   page.keyboard.press("Enter")
                   return True
 
-              elif cmd_lower.startswith('#'):
-                  debug_print(f"Comment: {command}")
-                  return True
-
+              # هر چیز دیگر = تایپ کردن
               else:
                   debug_print(f"Typing text: [{command}]")
-                  # تایپ کاراکتر به کاراکتر با delay
-                  for ch in command:
-                      page.keyboard.type(ch, delay=random.randint(50, 150))
-                      time.sleep(random.uniform(0.03, 0.08))
-                  debug_print(f"Finished typing: {command}")
+                  # روش 1: پیدا کردن باکس فعال و پر کردن
+                  try:
+                      # سعی کن باکس ورودی فعال رو پیدا کنی
+                      page.wait_for_selector('input, textarea, [contenteditable="true"]', timeout=3000)
+                      focused = page.locator(':focus')
+                      if focused.count() > 0:
+                          focused.fill(command)
+                          debug_print(f"Filled focused input: {command}")
+                      else:
+                          # اگر باکسی فوکوس نیست، از صفحه کلید استفاده کن
+                          page.keyboard.type(command, delay=random.randint(50, 100))
+                          debug_print(f"Typed with keyboard: {command}")
+                  except:
+                      # روش دوم: تایپ مستقیم با کیبورد
+                      page.keyboard.type(command, delay=random.randint(50, 100))
+                      debug_print(f"Typed with keyboard (fallback): {command}")
+                  
+                  time.sleep(0.5)
                   return True
 
           def main():
@@ -146,20 +161,17 @@ jobs:
                   )
                   page = context.new_page()
                   
-                  # برو به سایت تست (بدون کپچا)
                   test_url = "https://httpbin.org/forms/post"
-                  debug_print(f"Going to test site: {test_url}")
+                  debug_print(f"Going to: {test_url}")
                   page.goto(test_url, timeout=60000)
                   debug_print(f"Opened: {page.url}")
                   
-                  # یه جای ساده برای کلیک و تایپ (باکس فرم)
-                  debug_print("Looking for input field...")
+                  # کلیک روی باکس اسم برای فوکوس
                   try:
-                      # پیدا کردن باکس متن روی صفحه تست
-                      page.fill('input[name="custname"]', "Ready for commands")
-                      debug_print("Input field found and initialized")
+                      page.click('input[name="custname"]')
+                      debug_print("Clicked on customer name field")
                   except:
-                      debug_print("Could not find input field, but continuing...")
+                      debug_print("Could not click on field, but continuing...")
 
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
@@ -169,25 +181,24 @@ jobs:
                           content = get_c_txt_content()
                           
                           if content and content != last_command and not content.startswith('#'):
-                              debug_print(f"NEW COMMAND DETECTED: {content}")
+                              debug_print(f"NEW COMMAND: {content}")
                               
                               if execute_command(page, content):
                                   last_command = content
                                   time.sleep(0.8)
                                   screenshot = page.screenshot(type='png')
-                                  upload_frame(screenshot, f"after_{content[:20]}")
+                                  upload_frame(screenshot, f"after")
                                   clear_c_txt()
-                                  debug_print(f"Command completed: {content}")
+                                  debug_print(f"Command done: {content}")
                               else:
                                   debug_print(f"Command failed: {content}")
                                   clear_c_txt()
                           else:
-                              # فقط هر 10 ثانیه یکبار لاگ بده که زنده است
                               time.sleep(10)
-                              debug_print("Still alive, waiting for commands...")
+                              debug_print("Alive, waiting...")
                               
                       except Exception as e:
-                          debug_print(f"Error in main loop: {e}")
+                          debug_print(f"Error: {e}")
                           time.sleep(5)
 
           if __name__ == "__main__":
