@@ -1,1 +1,1 @@
-click 519 266
+# waiting for next command
