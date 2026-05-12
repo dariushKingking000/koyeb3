@@ -33,7 +33,13 @@ jobs:
         import datetime
         import os
         import base64
+        import sys
         from playwright.sync_api import sync_playwright
+        
+        # تابع print با فلاش فوری
+        def debug_print(msg):
+            print(msg)
+            sys.stdout.flush()
         
         REPO_OWNER = "dariushKingking000"
         REPO_NAME = "koyeb3"
@@ -41,16 +47,12 @@ jobs:
         HISTORY_FILE = "executed_commands.txt"
         GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
         
-        # برای ریپوی خودتون (جایی که action اجرا میشه)
-        CURRENT_REPO = os.getenv('REPO_NAME')
-        
         headers = {
             'Authorization': f'token {GITHUB_TOKEN}',
             'Accept': 'application/vnd.github.v3+json'
         }
         
         def load_executed_commands():
-            """بارگذاری دستورات اجرا شده از فایل تاریخچه"""
             try:
                 with open(HISTORY_FILE, 'r') as f:
                     return set(line.strip() for line in f if line.strip())
@@ -58,148 +60,123 @@ jobs:
                 return set()
         
         def save_executed_command(command):
-            """ذخیره یک دستور اجرا شده در فایل تاریخچه"""
             with open(HISTORY_FILE, 'a') as f:
                 f.write(command + '\n')
+            debug_print(f"💾 ذخیره شد در تاریخچه: {command}")
         
         def get_c_txt_content():
-            """دریافت محتوای c.txt از ریپوی koyeb3"""
             url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
             try:
                 response = requests.get(url, headers=headers)
                 if response.status_code == 200:
                     content = response.json().get('content', '')
                     if content:
-                        import base64
                         decoded = base64.b64decode(content).decode('utf-8')
                         return decoded.strip()
                 return None
             except Exception as e:
-                print(f"❌ خطا در دریافت فایل: {e}")
+                debug_print(f"❌ خطا در دریافت فایل: {e}")
                 return None
         
         def execute_command(page, command, executed_set):
-            """اجرای یک دستور خاص"""
             cmd_lower = command.lower().strip()
             
-            # چک کردن تکراری بودن
             if command in executed_set:
-                print(f"⏭️ دستور تکراری: {command}")
+                debug_print(f"⏭️ دستور تکراری: {command}")
                 return False
             
-            # پردازش دستورات
             if cmd_lower.startswith('click '):
                 parts = cmd_lower.split()
                 if len(parts) == 3:
                     try:
                         x = int(parts[1])
                         y = int(parts[2])
-                        print(f"🖱️ کلیک در مختصات ({x}, {y})")
+                        debug_print(f"🖱️ کلیک در مختصات ({x}, {y})")
                         page.mouse.click(x, y)
                         time.sleep(0.5)
                         return True
                     except ValueError:
-                        print(f"⚠️ مختصات نامعتبر: {command}")
+                        debug_print(f"⚠️ مختصات نامعتبر: {command}")
                         return False
             
             elif cmd_lower.startswith('type '):
-                text_to_type = ' '.join(parts[1:]) if 'parts' in dir() else command[5:].strip()
-                if not text_to_type:
-                    parts = command.split(' ', 1)
-                    if len(parts) == 2:
-                        text_to_type = parts[1]
-                print(f"⌨️ تایپ کردن: {text_to_type}")
-                page.keyboard.type(text_to_type)
-                time.sleep(0.5)
-                return True
+                parts = command.split(' ', 1)
+                if len(parts) == 2:
+                    text_to_type = parts[1]
+                    debug_print(f"⌨️ تایپ کردن: {text_to_type}")
+                    page.keyboard.type(text_to_type)
+                    time.sleep(0.5)
+                    return True
+                else:
+                    debug_print(f"⚠️ دستور type بدون متن: {command}")
+                    return False
             
             else:
-                print(f"⚠️ دستور ناشناخته: {command}")
+                debug_print(f"⚠️ دستور ناشناخته: {command}")
                 return False
         
-        def take_screenshot():
-            """گرفتن اسکرین‌شات از گوگل"""
-            now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"google_{now}.png"
-            
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                page.goto('https://www.google.com')
-                
-                # کمی صبر برای لود کامل صفحه
-                time.sleep(2)
-                
-                page.screenshot(path=filename, full_page=True)
-                browser.close()
-            
-            print(f"📸 اسکرین‌شات ذخیره شد: {filename}")
-            return filename
-        
         def main_loop():
-            print("🚀 واتچر دستورات شروع به کار کرد")
-            print("📋 هر 1 دقیقه فایل c.txt رو چک میکنم...")
+            debug_print("🚀 واتچر دستورات شروع به کار کرد")
+            debug_print("📋 هر 1 دقیقه فایل c.txt رو چک میکنم...")
+            debug_print("⏰ توجه: این حلقه تا 6 ساعت اجرا میشه بعد GitHub Action kill میکنه")
             
+            loop_count = 0
             while True:
+                loop_count += 1
+                debug_print(f"\n{'='*50}")
+                debug_print(f"🔄 چک شماره {loop_count} - زمان: {datetime.datetime.now().strftime('%H:%M:%S')}")
+                
                 try:
-                    # بارگذاری تاریخچه
                     executed = load_executed_commands()
+                    debug_print(f"📜 تعداد دستورات اجرا شده قبلی: {len(executed)}")
                     
-                    # دریافت دستورات جدید از c.txt
                     content = get_c_txt_content()
                     
                     if content:
                         commands = [line.strip() for line in content.split('\n') if line.strip()]
+                        debug_print(f"📄 تعداد دستورات داخل c.txt: {len(commands)}")
                         
-                        # فیلتر دستورات جدید (اجرا نشده)
                         new_commands = [cmd for cmd in commands if cmd not in executed]
                         
                         if new_commands:
-                            print(f"\n✨ {len(new_commands)} دستور جدید پیدا شد:")
-                            for cmd in new_commands:
-                                print(f"   - {cmd}")
+                            debug_print(f"✨ {len(new_commands)} دستور جدید پیدا شد")
                             
-                            # گرفتن اسکرین‌شات و اجرای دستورات
                             with sync_playwright() as p:
                                 browser = p.chromium.launch(headless=True)
                                 page = browser.new_page()
+                                debug_print("🌐 در حال رفتن به google.com...")
                                 page.goto('https://www.google.com')
-                                time.sleep(2)  # منتظر لود صفحه
+                                time.sleep(3)
                                 
                                 for command in new_commands:
-                                    print(f"\n▶️ اجرا: {command}")
+                                    debug_print(f"\n▶️ اجرا: {command}")
                                     if execute_command(page, command, executed):
                                         save_executed_command(command)
                                         executed.add(command)
-                                    time.sleep(0.5)  # فاصله بین دستورات
+                                    time.sleep(0.5)
                                 
-                                # گرفتن اسکرین‌شات نهایی
                                 now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
                                 screenshot_name = f"google_{now}.png"
                                 page.screenshot(path=screenshot_name, full_page=True)
-                                print(f"📸 اسکرین‌شات نهایی: {screenshot_name}")
+                                debug_print(f"📸 اسکرین‌شات ذخیره شد: {screenshot_name}")
                                 browser.close()
-                            
-                            # آپلود اسکرین‌شات بعداً توسط step بعدی انجام میشه
-                            
                         else:
-                            print(f"🔄 [{datetime.datetime.now().strftime('%H:%M:%S')}] هیچ دستور جدیدی نیست")
+                            debug_print("ℹ️ هیچ دستور جدیدی پیدا نشد")
                     else:
-                        print(f"⚠️ [{datetime.datetime.now().strftime('%H:%M:%S')}] فایل c.txt پیدا نشد یا خالی است")
+                        debug_print("⚠️ فایل c.txt پیدا نشد یا خالی است")
                     
-                    # منتظر 1 دقیقه برای چک بعدی
-                    print("⏳ صبر 1 دقیقه تا چک بعدی...\n")
+                    debug_print(f"⏳ صبر 60 ثانیه تا چک بعدی...")
                     time.sleep(60)
                     
                 except Exception as e:
-                    print(f"💥 خطا در حلقه اصلی: {e}")
+                    debug_print(f"💥 خطا: {e}")
                     time.sleep(60)
         
         if __name__ == "__main__":
             main_loop()
         EOF
         
-        python watcher.py
+        python3 watcher.py
     
     - name: Commit & Push Screenshots
       run: |
