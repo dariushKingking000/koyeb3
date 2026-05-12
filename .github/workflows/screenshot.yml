@@ -1,4 +1,4 @@
-name: Remote Browser Controller - DuckDuckGo
+name: Remote Browser Controller - Bing
 on: 
   workflow_dispatch:
 
@@ -123,15 +123,12 @@ jobs:
 
               else:
                   debug_print(f"Typing: [{command}]")
-                  # تایپ کاراکتر به کاراکتر
-                  for ch in command:
-                      page.keyboard.type(ch, delay=random.randint(30, 80))
-                      time.sleep(random.uniform(0.02, 0.07))
+                  page.keyboard.type(command, delay=random.randint(30, 80))
                   debug_print(f"Typing complete")
                   return True
 
           def main():
-              debug_print("Starting DuckDuckGo Browser...")
+              debug_print("Starting Bing Browser...")
 
               last_command = None
 
@@ -152,25 +149,24 @@ jobs:
                   
                   page = context.new_page()
                   
-                  # مخفی کردن webdriver
                   page.add_init_script("""
                       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                   """)
                   
-                  debug_print("Going to DuckDuckGo...")
-                  page.goto('https://duckduckgo.com', wait_until='domcontentloaded', timeout=60000)
+                  # رفتن به Bing (پایدارتر از گوگل و DuckDuckGo)
+                  debug_print("Going to Bing...")
+                  page.goto('https://www.bing.com', wait_until='domcontentloaded', timeout=60000)
                   debug_print(f"Opened: {page.url}")
                   
                   time.sleep(2)
                   
-                  # پیدا کردن و کلیک روی باکس جستجو
+                  # کلیک روی باکس جستجوی Bing
                   try:
-                      search_box = page.locator('input[type="text"], input[name="q"], #search_form_input_homepage')
+                      search_box = page.locator('#sb_form_q')
                       if search_box.count() > 0:
-                          search_box.first.click()
-                          debug_print("Clicked on search box")
+                          search_box.click()
+                          debug_print("Clicked on Bing search box")
                       else:
-                          # روش دوم: استفاده از keyboard shortcut
                           page.keyboard.press('Tab')
                           debug_print("Used Tab to focus")
                   except Exception as e:
