@@ -86,8 +86,6 @@ jobs:
           import os
           import base64
           import sys
-          import uuid
-          import random
           from playwright.sync_api import sync_playwright
 
           def debug_print(msg):
@@ -106,42 +104,32 @@ jobs:
               'Accept': 'application/vnd.github.v3+json'
           }
 
-          # شمارنده ساده برای نام فایل
-          frame_counter = 0
-
-          def upload_frame(frame_data):
-              """آپلود فریم با شمارنده ساده"""
-              global frame_counter
-              frame_counter += 1
+          class FrameUploader:
+              def __init__(self):
+                  self.frame_counter = 0
               
-              # نام فایل با شمارنده
-              file_path = f"{FRAME_FOLDER}/frame_{frame_counter:06d}.png"
-              
-              content = base64.b64encode(frame_data).decode('utf-8')
-              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
-              
-              # بررسی وجود فایل
-              check_response = requests.get(url, headers=headers)
-              if check_response.status_code == 200:
-                  # فایل وجود دارد، شمارنده را زیاد کن
-                  global frame_counter
-                  frame_counter += 1
-                  file_path = f"{FRAME_FOLDER}/frame_{frame_counter:06d}.png"
+              def upload_frame(self, frame_data):
+                  """آپلود فریم با شمارنده ساده"""
+                  self.frame_counter += 1
+                  
+                  file_path = f"{FRAME_FOLDER}/frame_{self.frame_counter:06d}.png"
+                  
+                  content = base64.b64encode(frame_data).decode('utf-8')
                   url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
-              
-              data = {
-                  "message": f"📸 Frame {frame_counter}",
-                  "content": content,
-                  "branch": "main"
-              }
-              
-              put_response = requests.put(url, headers=headers, json=data)
-              if put_response.status_code in [200, 201]:
-                  debug_print(f"✅ فریم {frame_counter} آپلود شد")
-                  return True
-              else:
-                  debug_print(f"❌ خطا در آپلود فریم {frame_counter}: {put_response.status_code}")
-                  return False
+                  
+                  data = {
+                      "message": f"📸 Frame {self.frame_counter}",
+                      "content": content,
+                      "branch": "main"
+                  }
+                  
+                  put_response = requests.put(url, headers=headers, json=data)
+                  if put_response.status_code in [200, 201]:
+                      debug_print(f"✅ فریم {self.frame_counter} آپلود شد")
+                      return True
+                  else:
+                      debug_print(f"❌ خطا در آپلود فریم {self.frame_counter}: {put_response.status_code}")
+                      return False
 
           def get_c_txt_content():
               """خواندن دستورات از c.txt"""
@@ -224,31 +212,11 @@ jobs:
                   return False
 
           def main():
-              global frame_counter
               debug_print("🚀 Remote Browser Server شروع به کار کرد")
               debug_print(f"🎯 ریپو: {TARGET_REPO_OWNER}/{TARGET_REPO_NAME}")
               debug_print("📋 منتظر دستورات از c.txt...")
 
-              # پیدا کردن آخرین شمارنده فریم
-              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
-              response = requests.get(url, headers=headers)
-              if response.status_code == 200:
-                  files = response.json()
-                  if files and isinstance(files, list):
-                      png_files = [f for f in files if f['name'].endswith('.png')]
-                      if png_files:
-                          # استخراج شمارنده از نام فایل
-                          numbers = []
-                          for f in png_files:
-                              try:
-                                  num = int(f['name'].replace('frame_', '').replace('.png', ''))
-                                  numbers.append(num)
-                              except:
-                                  pass
-                          if numbers:
-                              frame_counter = max(numbers)
-                              debug_print(f"📊 شمارنده از {frame_counter} شروع شد")
-
+              uploader = FrameUploader()
               last_command = None
 
               with sync_playwright() as p:
@@ -259,7 +227,7 @@ jobs:
 
                   # فریم اولیه
                   screenshot = page.screenshot(type='png')
-                  upload_frame(screenshot)
+                  uploader.upload_frame(screenshot)
 
                   while True:
                       try:
@@ -273,7 +241,7 @@ jobs:
                                   last_command = content
                                   time.sleep(1)
                                   screenshot = page.screenshot(type='png')
-                                  upload_frame(screenshot)
+                                  uploader.upload_frame(screenshot)
                                   clear_c_txt()
                               else:
                                   debug_print(f"⚠️ خطا در اجرای دستور: {content}")
@@ -282,7 +250,7 @@ jobs:
                           # هر 3 ثانیه یک فریم معمولی
                           time.sleep(3)
                           screenshot = page.screenshot(type='png')
-                          upload_frame(screenshot)
+                          uploader.upload_frame(screenshot)
 
                       except Exception as e:
                           debug_print(f"💥 خطا: {e}")
