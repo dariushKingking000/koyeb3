@@ -37,7 +37,8 @@ jobs:
           import os
           import base64
           import sys
-          import hashlib
+          import uuid
+          import random
           from playwright.sync_api import sync_playwright
 
           def debug_print(msg):
@@ -57,23 +58,23 @@ jobs:
           }
 
           def upload_frame(frame_data):
-              """آپلود فریم با نام کاملاً یکتا"""
-              # استفاده از time_ns برای دقت نانوثانیه + hash
-              unique_id = f"{time.time_ns()}_{hash(frame_data) % 10000}"
+              """آپلود فریم با نام کاملاً یکتا (UUID + timestamp)"""
+              # ترکیب UUID و timestamp برای اطمینان از یکتایی
+              unique_id = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{random.randint(1000,9999)}"
               file_path = f"{FRAME_FOLDER}/frame_{unique_id}.png"
               
               content = base64.b64encode(frame_data).decode('utf-8')
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
               
               data = {
-                  "message": f"📸 Frame {unique_id[:20]}",
+                  "message": f"📸 Frame {unique_id[:30]}",
                   "content": content,
                   "branch": "main"
               }
               
               put_response = requests.put(url, headers=headers, json=data)
               if put_response.status_code in [200, 201]:
-                  debug_print(f"✅ فریم آپلود شد")
+                  debug_print(f"✅ فریم آپلود شد: {file_path}")
                   return True
               else:
                   debug_print(f"❌ خطا در آپلود فریم: {put_response.status_code}")
@@ -113,8 +114,11 @@ jobs:
               if sha:
                   data["sha"] = sha
               
-              requests.put(url, headers=headers, json=data)
-              debug_print("🗑️ c.txt پاک شد")
+              put_response = requests.put(url, headers=headers, json=data)
+              if put_response.status_code in [200, 201]:
+                  debug_print("🗑️ c.txt پاک شد")
+              else:
+                  debug_print(f"⚠️ خطا در پاک کردن c.txt: {put_response.status_code}")
 
           def execute_command(page, command):
               """اجرای یک دستور روی صفحه"""
