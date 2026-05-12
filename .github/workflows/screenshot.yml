@@ -57,11 +57,12 @@ jobs:
               'Accept': 'application/vnd.github.v3+json'
           }
 
-          # IP های گوگل (بایپس DNS)
-          GOOGLE_IPS = [
-              "142.250.185.46",   # google.com
-              "172.217.168.46",   # google.com
-              "216.58.214.46",    # google.com
+          # سایت‌های جایگزین که همیشه کار می‌کنند
+          FALLBACK_SITES = [
+              "https://example.com",        # سایت تست IETF
+              "https://neverssl.com",       # مخصوص این موارد
+              "https://httpbin.org",        # API تست
+              "https://github.com",         # خود گیت‌هاب
           ]
 
           def upload_frame(frame_data, description=""):
@@ -141,14 +142,6 @@ jobs:
 
               last_command = None
 
-              # تست اتصال DNS
-              debug_print("🔍 تست اتصال به اینترنت...")
-              try:
-                  socket.gethostbyname('google.com')
-                  debug_print("✅ DNS کار می‌کند")
-              except:
-                  debug_print("⚠️ DNS مشکل دارد، استفاده از IP مستقیم")
-
               with sync_playwright() as p:
                   browser = p.chromium.launch(
                       headless=True,
@@ -157,16 +150,13 @@ jobs:
                           '--disable-dev-shm-usage',
                           '--disable-setuid-sandbox',
                           '--disable-gpu',
-                          '--disable-software-rasterizer',
-                          '--disable-features=VizDisplayCompositor',
-                          '--dns-prefetch-disable',  # غیرفعال کردن DNS prefetch
                       ]
                   )
                   
                   context = browser.new_context(
                       viewport={'width': 1280, 'height': 720},
                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-                      ignore_https_errors=True,  # مهم!
+                      ignore_https_errors=True,
                   )
                   
                   page = context.new_page()
@@ -178,26 +168,29 @@ jobs:
                   
                   page.set_default_timeout(60000)
                   
-                  debug_print("🌐 رفتن به گوگل...")
+                  debug_print("🌐 رفتن به سایت...")
                   
-                  # تلاش با IP مستقیم
+                  # تلاش با سایت‌های جایگزین
                   success = False
-                  for ip in GOOGLE_IPS:
+                  current_url = None
+                  
+                  for url in FALLBACK_SITES:
                       try:
-                          debug_print(f"🔄 تلاش با IP: {ip}")
-                          page.goto(f'https://{ip}', wait_until='domcontentloaded', timeout=30000)
+                          debug_print(f"🔄 تلاش: {url}")
+                          page.goto(url, wait_until='domcontentloaded', timeout=30000)
                           success = True
-                          debug_print(f"✅ با IP {ip} باز شد")
+                          current_url = url
+                          debug_print(f"✅ {url} باز شد")
                           break
                       except Exception as e:
-                          debug_print(f"⚠️ IP {ip} جواب نداد: {e}")
+                          debug_print(f"⚠️ {url} جواب نداد: {str(e)[:50]}")
                   
                   if not success:
-                      debug_print("❌ هیچ IP جواب نداد، در حال بسته شدن...")
+                      debug_print("❌ هیچ سایتی جواب نداد")
                       return
                   
                   time.sleep(2)
-                  debug_print("✅ گوگل باز شد")
+                  debug_print(f"✅ صفحه باز شد: {current_url}")
 
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
