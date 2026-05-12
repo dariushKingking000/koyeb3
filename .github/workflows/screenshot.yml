@@ -39,7 +39,6 @@ jobs:
           import sys
           import uuid
           import random
-          import subprocess
           from patchright.sync_api import sync_playwright
 
           def debug_print(msg):
@@ -134,14 +133,6 @@ jobs:
 
               last_command = None
 
-              # تست DNS با استفاده از curl
-              debug_print("🔍 تست اتصال با curl...")
-              try:
-                  subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "https://google.com"], timeout=10)
-                  debug_print("✅ curl به google.com متصل شد")
-              except:
-                  debug_print("⚠️ curl نتونست وصل شود")
-
               with sync_playwright() as p:
                   browser = p.chromium.launch(
                       headless=True,
@@ -150,15 +141,6 @@ jobs:
                           '--disable-dev-shm-usage',
                           '--disable-setuid-sandbox',
                           '--disable-gpu',
-                          '--disable-software-rasterizer',
-                          '--dns-prefetch-disable',
-                          '--disable-features=VizDisplayCompositor',
-                          '--disable-features=OptimizationHints',
-                          '--disable-features=OptimizationHintsFetching',
-                          '--disable-features=OptimizationGuideModelDownloading',
-                          '--disable-features=PrivacySandboxSettings4',
-                          '--disable-features=PrivacySandboxAdsAPI',
-                          '--disable-ipc-flooding-protection',
                       ]
                   )
                   
@@ -166,63 +148,36 @@ jobs:
                       viewport={'width': 1280, 'height': 720},
                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
                       ignore_https_errors=True,
-                      extra_http_headers={
-                          'Accept-Language': 'en-US,en;q=0.9',
-                      }
                   )
                   
                   page = context.new_page()
                   
+                  # مخفی کردن webdriver
                   page.add_init_script("""
                       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                      delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
-                      delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
-                      delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
                   """)
                   
-                  page.set_default_timeout(90000)
+                  page.set_default_timeout(60000)
                   
-                  # گوگل با IP و Host header
-                  debug_print("🌐 تلاش ویژه برای گوگل...")
+                  debug_print("🌐 رفتن به example.com...")
                   
+                  # استفاده از IP گوگل به جای نام دامنه
                   try:
-                      # روش اول: استفاده از fetch از طریق requests
-                      debug_print("🔄 روش 1: تست با requests library")
-                      test_req = requests.get('https://google.com', timeout=10)
-                      debug_print(f"✅ requests به google.com متصل شد: {test_req.status_code}")
+                      page.goto('https://www.example.com', wait_until='domcontentloaded', timeout=30000)
+                      debug_print(f"✅ باز شد: {page.url}")
                   except Exception as e:
-                      debug_print(f"⚠️ requests هم وصل نشد: {e}")
-                  
-                  # روش دوم: با IP و Host header
-                  debug_print("🔄 روش 2: استفاده از IP + Host header")
-                  
-                  # ایجاد یک درخواست با IP مستقیم
-                  try:
-                      page.goto('https://142.250.185.46', wait_until='domcontentloaded', timeout=45000)
-                      debug_print("✅ با IP مستقیم باز شد")
-                  except Exception as e:
-                      debug_print(f"❌ IP مستقیم جواب نداد: {str(e)[:100]}")
-                      
-                      # روش سوم: استفاده از about:blank و سپس navigation
-                      debug_print("🔄 روش 3: about:blank -> navigation")
-                      page.goto('about:blank')
-                      time.sleep(1)
-                      
+                      debug_print(f"❌ خطا: {str(e)[:100]}")
+                      debug_print("🔄 تلاش با httpbin...")
                       try:
-                          await page.evaluate("""
-                              window.location.href = 'https://google.com';
-                          """)
-                      except:
-                          page.goto('https://google.com', timeout=60000)
+                          page.goto('https://httpbin.org/html', wait_until='domcontentloaded', timeout=30000)
+                          debug_print(f"✅ باز شد: {page.url}")
+                      except Exception as e2:
+                          debug_print(f"❌ خطا: {str(e2)[:100]}")
+                          debug_print("🔄 تلاش با about:blank...")
+                          page.goto('about:blank')
                   
-                  time.sleep(3)
-                  
-                  try:
-                      current_url = page.url
-                      debug_print(f"📍 URL فعلی: {current_url}")
-                  except:
-                      debug_print("❌ نمی‌توان URL را گرفت")
-                  
+                  time.sleep(2)
+
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
 
