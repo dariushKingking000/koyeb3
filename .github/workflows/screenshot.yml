@@ -26,6 +26,55 @@ jobs:
           pip install playwright requests
           playwright install chromium
 
+      - name: Clear old frames
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 << 'EOF'
+          import requests
+          import base64
+          import os
+          
+          GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+          REPO_OWNER = "dariushKingking000"
+          REPO_NAME = "koyeb3"
+          FRAME_FOLDER = "frames"
+          
+          headers = {
+              'Authorization': f'token {GITHUB_TOKEN}',
+              'Accept': 'application/vnd.github.v3+json'
+          }
+          
+          # دریافت لیست فایل‌ها
+          url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FRAME_FOLDER}"
+          response = requests.get(url, headers=headers)
+          
+          if response.status_code == 200:
+              files = response.json()
+              if files and isinstance(files, list):
+                  png_files = [f for f in files if f['name'].endswith('.png')]
+                  print(f"🗑️ حذف {len(png_files)} فریم قدیمی...")
+                  for old_file in png_files:
+                      delete_url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FRAME_FOLDER}/{old_file['name']}"
+                      delete_data = {
+                          "message": f"🗑️ Clear old frame {old_file['name']}",
+                          "sha": old_file['sha'],
+                          "branch": "main"
+                      }
+                      requests.delete(delete_url, headers=headers, json=delete_data)
+                  print("✅ فریم‌های قدیمی حذف شدند")
+          else:
+              # پوشه وجود ندارد، ایجاد کن
+              dummy_content = base64.b64encode(b"frames folder").decode('utf-8')
+              dummy_data = {
+                  "message": "Create frames folder",
+                  "content": dummy_content,
+                  "branch": "main"
+              }
+              requests.put(url, headers=headers, json=dummy_data)
+              print("📁 پوشه frames ایجاد شد")
+          EOF
+
       - name: Run Remote Browser Server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,27 +106,41 @@ jobs:
               'Accept': 'application/vnd.github.v3+json'
           }
 
+          # شمارنده ساده برای نام فایل
+          frame_counter = 0
+
           def upload_frame(frame_data):
-              """آپلود فریم با نام کاملاً یکتا (UUID + timestamp)"""
-              # ترکیب UUID و timestamp برای اطمینان از یکتایی
-              unique_id = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{random.randint(1000,9999)}"
-              file_path = f"{FRAME_FOLDER}/frame_{unique_id}.png"
+              """آپلود فریم با شمارنده ساده"""
+              global frame_counter
+              frame_counter += 1
+              
+              # نام فایل با شمارنده
+              file_path = f"{FRAME_FOLDER}/frame_{frame_counter:06d}.png"
               
               content = base64.b64encode(frame_data).decode('utf-8')
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
               
+              # بررسی وجود فایل
+              check_response = requests.get(url, headers=headers)
+              if check_response.status_code == 200:
+                  # فایل وجود دارد، شمارنده را زیاد کن
+                  global frame_counter
+                  frame_counter += 1
+                  file_path = f"{FRAME_FOLDER}/frame_{frame_counter:06d}.png"
+                  url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
+              
               data = {
-                  "message": f"📸 Frame {unique_id[:30]}",
+                  "message": f"📸 Frame {frame_counter}",
                   "content": content,
                   "branch": "main"
               }
               
               put_response = requests.put(url, headers=headers, json=data)
               if put_response.status_code in [200, 201]:
-                  debug_print(f"✅ فریم آپلود شد: {file_path}")
+                  debug_print(f"✅ فریم {frame_counter} آپلود شد")
                   return True
               else:
-                  debug_print(f"❌ خطا در آپلود فریم: {put_response.status_code}")
+                  debug_print(f"❌ خطا در آپلود فریم {frame_counter}: {put_response.status_code}")
                   return False
 
           def get_c_txt_content():
@@ -117,8 +180,6 @@ jobs:
               put_response = requests.put(url, headers=headers, json=data)
               if put_response.status_code in [200, 201]:
                   debug_print("🗑️ c.txt پاک شد")
-              else:
-                  debug_print(f"⚠️ خطا در پاک کردن c.txt: {put_response.status_code}")
 
           def execute_command(page, command):
               """اجرای یک دستور روی صفحه"""
@@ -162,47 +223,31 @@ jobs:
                   debug_print(f"⚠️ دستور ناشناخته: {command}")
                   return False
 
-          def clean_old_frames(max_frames=100):
-              """پاک کردن فریم‌های قدیمی"""
-              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
-              response = requests.get(url, headers=headers)
-
-              if response.status_code == 200:
-                  files = response.json()
-                  if files and isinstance(files, list):
-                      png_files = sorted([f for f in files if f['name'].endswith('.png')], 
-                                        key=lambda x: x['name'])
-                      if len(png_files) > max_frames:
-                          for old_file in png_files[:-max_frames]:
-                              delete_url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}/{old_file['name']}"
-                              delete_data = {
-                                  "message": f"🗑️ حذف {old_file['name']}",
-                                  "sha": old_file['sha'],
-                                  "branch": "main"
-                              }
-                              requests.delete(delete_url, headers=headers, json=delete_data)
-                              debug_print(f"🗑️ حذف: {old_file['name']}")
-
-          def ensure_frames_folder():
-              """ایجاد پوشه frames اگر وجود ندارد"""
-              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
-              response = requests.get(url, headers=headers)
-              if response.status_code != 200:
-                  dummy_content = base64.b64encode(b"frames folder").decode('utf-8')
-                  dummy_data = {
-                      "message": "Create frames folder",
-                      "content": dummy_content,
-                      "branch": "main"
-                  }
-                  requests.put(url, headers=headers, json=dummy_data)
-                  debug_print("📁 پوشه frames ایجاد شد")
-
           def main():
+              global frame_counter
               debug_print("🚀 Remote Browser Server شروع به کار کرد")
               debug_print(f"🎯 ریپو: {TARGET_REPO_OWNER}/{TARGET_REPO_NAME}")
               debug_print("📋 منتظر دستورات از c.txt...")
 
-              ensure_frames_folder()
+              # پیدا کردن آخرین شمارنده فریم
+              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
+              response = requests.get(url, headers=headers)
+              if response.status_code == 200:
+                  files = response.json()
+                  if files and isinstance(files, list):
+                      png_files = [f for f in files if f['name'].endswith('.png')]
+                      if png_files:
+                          # استخراج شمارنده از نام فایل
+                          numbers = []
+                          for f in png_files:
+                              try:
+                                  num = int(f['name'].replace('frame_', '').replace('.png', ''))
+                                  numbers.append(num)
+                              except:
+                                  pass
+                          if numbers:
+                              frame_counter = max(numbers)
+                              debug_print(f"📊 شمارنده از {frame_counter} شروع شد")
 
               last_command = None
 
@@ -238,9 +283,6 @@ jobs:
                           time.sleep(3)
                           screenshot = page.screenshot(type='png')
                           upload_frame(screenshot)
-
-                          # هر 20 فریم یکبار پاکسازی
-                          clean_old_frames(100)
 
                       except Exception as e:
                           debug_print(f"💥 خطا: {e}")
