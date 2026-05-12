@@ -1,12 +1,18 @@
 name: Download and Save ngrok
 on: 
-  workflow_dispatch:  # فقط دستی اجرا کن
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   download-ngrok:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}  # استفاده از توکن جدید
+          fetch-depth: 0
 
       - name: Download ngrok
         run: |
@@ -22,12 +28,10 @@ jobs:
 
       - name: Save ngrok to repository
         run: |
-          # اگه پوشه tools وجود نداره، بساز
           if (!(Test-Path -Path "tools")) {
             New-Item -ItemType Directory -Path "tools"
           }
           
-          # انتقال فایل ngrok.exe به پوشه tools
           if (Test-Path -Path "ngrok.exe") {
             Move-Item -Path "ngrok.exe" -Destination "tools/ngrok.exe" -Force
             Write-Host "ngrok.exe saved to tools/ngrok.exe"
@@ -35,7 +39,6 @@ jobs:
             Write-Host "ngrok.exe not found!"
           }
           
-          # پاک کردن فایل زیپ
           Remove-Item -Path "ngrok.zip" -Force -ErrorAction SilentlyContinue
 
       - name: Commit and push
@@ -46,4 +49,4 @@ jobs:
           git commit -m "Add ngrok executable" || echo "No changes to commit"
           git push origin HEAD:main
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
