@@ -7,7 +7,7 @@ permissions:
 
 jobs:
   browser:
-    runs-on: windows-latest  # تغییر به ویندوز
+    runs-on: windows-latest
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
@@ -62,10 +62,10 @@ jobs:
               file_path = f"{FRAME_FOLDER}/frame_{unique_id}.png"
               content = base64.b64encode(frame_data).decode('utf-8')
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
-              data = {"message": f"📸 {description}", "content": content, "branch": "main"}
+              data = {"message": f"{description}", "content": content, "branch": "main"}
               put_response = requests.put(url, headers=headers, json=data)
               if put_response.status_code in [200, 201]:
-                  debug_print(f"✅ فریم آپلود شد")
+                  debug_print(f"Frame uploaded: {description}")
                   return True
               return False
 
@@ -80,7 +80,7 @@ jobs:
                           return decoded.strip()
                   return None
               except Exception as e:
-                  debug_print(f"❌ خطا: {e}")
+                  debug_print(f"Error reading c.txt: {e}")
                   return None
 
           def clear_c_txt():
@@ -88,11 +88,11 @@ jobs:
               response = requests.get(url, headers=headers)
               sha = response.json().get('sha') if response.status_code == 200 else None
               content_b64 = base64.b64encode(b"# waiting").decode('utf-8')
-              data = {"message": "🧹 Clear", "content": content_b64, "branch": "main"}
+              data = {"message": "Clear", "content": content_b64, "branch": "main"}
               if sha:
                   data["sha"] = sha
               requests.put(url, headers=headers, json=data)
-              debug_print("🗑️ پاک شد")
+              debug_print("c.txt cleared")
 
           def execute_command(page, command):
               cmd_lower = command.lower().strip()
@@ -102,33 +102,33 @@ jobs:
                   if len(parts) == 3:
                       try:
                           x, y = int(parts[1]), int(parts[2])
-                          debug_print(f"🖱️ کلیک ({x}, {y})")
+                          debug_print(f"Click at ({x}, {y})")
                           page.mouse.click(x, y)
                           return True
                       except ValueError:
-                          debug_print(f"⚠️ مختصات نامعتبر")
+                          debug_print(f"Invalid coordinates: {command}")
                           return False
                   else:
-                      debug_print(f"⚠️ فرمت click نامعتبر")
+                      debug_print(f"Invalid click format: {command}")
                       return False
 
               elif cmd_lower == "enter":
-                  debug_print(f"⏎ Enter")
+                  debug_print("Enter pressed")
                   page.keyboard.press("Enter")
                   return True
 
               elif cmd_lower == "#refresh" or cmd_lower == "refresh":
-                  debug_print(f"🔄 فریم تازه")
+                  debug_print("Refresh frame")
                   return True
 
               else:
-                  debug_print(f"⌨️ تایپ: {command}")
+                  debug_print(f"Typing: {command}")
                   page.keyboard.type(command, delay=random.randint(30, 100))
                   return True
 
           def main():
-              debug_print("🚀 شروع (Windows)")
-              debug_print("📋 منتظر دستورات...")
+              debug_print("Starting... (Windows)")
+              debug_print("Waiting for commands...")
 
               last_command = None
 
@@ -139,14 +139,14 @@ jobs:
                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
                   )
                   page = context.new_page()
-                  
+
                   page.add_init_script("""
                       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                   """)
-                  
-                  debug_print("🌐 رفتن به google.com...")
+
+                  debug_print("Going to google.com...")
                   page.goto('https://www.google.com', timeout=60000)
-                  debug_print(f"✅ باز شد: {page.url}")
+                  debug_print(f"Opened: {page.url}")
 
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
@@ -155,7 +155,7 @@ jobs:
                       try:
                           content = get_c_txt_content()
                           if content and content != last_command and not content.startswith('#'):
-                              debug_print(f"📖 دستور: {content}")
+                              debug_print(f"Command: {content}")
                               if execute_command(page, content):
                                   last_command = content
                                   time.sleep(0.5)
@@ -166,7 +166,7 @@ jobs:
                                   clear_c_txt()
                           time.sleep(1)
                       except Exception as e:
-                          debug_print(f"💥 خطا: {e}")
+                          debug_print(f"Error: {e}")
                           time.sleep(5)
 
           if __name__ == "__main__":
