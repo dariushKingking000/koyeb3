@@ -1,7 +1,7 @@
 name: Remote Browser Controller
 on: 
-  push:
-  workflow_dispatch:
+  workflow_dispatch:  # فقط وقتی دستی اجرا کن
+  # حذف شد: push
 
 permissions:
   contents: write
@@ -26,154 +26,170 @@ jobs:
           pip install playwright requests
           playwright install chromium
 
-      - name: Clear old frames
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 << 'EOF'
-          import requests, base64, os
-          GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
-          REPO_OWNER, REPO_NAME, FRAME_FOLDER = "dariushKingking000", "koyeb3", "frames"
-          headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
-          url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FRAME_FOLDER}"
-          response = requests.get(url, headers=headers)
-          if response.status_code == 200:
-              files = response.json()
-              if files and isinstance(files, list):
-                  png_files = [f for f in files if f['name'].endswith('.png')]
-                  print(f"🗑️ حذف {len(png_files)} فریم قدیمی...")
-                  for old_file in png_files:
-                      delete_url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FRAME_FOLDER}/{old_file['name']}"
-                      delete_data = { "message": f"🗑️ Clear old frame {old_file['name']}", "sha": old_file['sha'], "branch": "main" }
-                      requests.delete(delete_url, headers=headers, json=delete_data)
-                  print("✅ فریم‌های قدیمی حذف شدند")
-          else:
-              dummy_content = base64.b64encode(b"frames folder").decode('utf-8')
-              dummy_data = { "message": "Create frames folder", "content": dummy_content, "branch": "main" }
-              requests.put(url, headers=headers, json=dummy_data)
-              print("📁 پوشه frames ایجاد شد")
-          EOF
-
       - name: Run Remote Browser Server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat > remote_browser.py << 'EOF'
-          import requests, time, datetime, os, base64, sys, uuid
+          import requests
+          import time
+          import datetime
+          import os
+          import base64
+          import sys
+          import uuid
           from playwright.sync_api import sync_playwright
 
           def debug_print(msg):
               print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
               sys.stdout.flush()
 
-          TARGET_REPO_OWNER, TARGET_REPO_NAME, FILE_PATH, FRAME_FOLDER = "dariushKingking000", "koyeb3", "c.txt", "frames"
+          # تنظیمات
+          TARGET_REPO_OWNER = "dariushKingking000"
+          TARGET_REPO_NAME = "koyeb3"
+          FILE_PATH = "c.txt"
+          FRAME_FOLDER = "frames"
           GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
-          headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
+
+          headers = {
+              'Authorization': f'token {GITHUB_TOKEN}',
+              'Accept': 'application/vnd.github.v3+json'
+          }
 
           def upload_frame(frame_data):
-              """آپلود فریم با نام یکتا (UUID) - مقاوم در برابر خطای 409"""
+              """آپلود فریم با نام یکتا"""
               unique_id = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:12]}"
               file_path = f"{FRAME_FOLDER}/frame_{unique_id}.png"
+              
               content = base64.b64encode(frame_data).decode('utf-8')
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
               
-              data = {"message": f"📸 Frame {unique_id[:30]}", "content": content, "branch": "main"}
+              data = {
+                  "message": f"📸 Frame {unique_id[:30]}",
+                  "content": content,
+                  "branch": "main"
+              }
+              
               put_response = requests.put(url, headers=headers, json=data)
               if put_response.status_code in [200, 201]:
-                  debug_print(f"✅ فریم آپلود شد: frame_{unique_id}.png")
+                  debug_print(f"✅ فریم آپلود شد")
                   return True
               else:
-                  debug_print(f"⚠️ خطا در آپلود فریم معمولی: {put_response.status_code}. تلاش مجدد با نام دیگر...")
-                  # تلاش مجدد با نام جدید
-                  unique_id_retry = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:12]}_{int(time.time()*1000)}"
-                  file_path_retry = f"{FRAME_FOLDER}/frame_{unique_id_retry}.png"
-                  url_retry = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path_retry}"
-                  data_retry = {"message": f"📸 Frame {unique_id_retry[:30]}", "content": content, "branch": "main"}
-                  put_response_retry = requests.put(url_retry, headers=headers, json=data_retry)
-                  
-                  if put_response_retry.status_code in [200, 201]:
-                      debug_print(f"✅ فریم با موفقیت در تلاش دوم آپلود شد: frame_{unique_id_retry}.png")
-                      return True
-                  else:
-                      debug_print(f"❌ خطا در آپلود فریم حتی در تلاش دوم: {put_response_retry.status_code}")
-                      return False
+                  debug_print(f"❌ خطا: {put_response.status_code}")
+                  return False
 
           def get_c_txt_content():
+              """خواندن دستورات از c.txt"""
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FILE_PATH}"
               try:
                   response = requests.get(url, headers=headers)
                   if response.status_code == 200:
                       content = response.json().get('content', '')
-                      if content: return base64.b64decode(content).decode('utf-8').strip()
-              except Exception as e: debug_print(f"❌ خطا در دریافت c.txt: {e}")
-              return None
+                      if content:
+                          decoded = base64.b64decode(content).decode('utf-8')
+                          return decoded.strip()
+                  return None
+              except Exception as e:
+                  debug_print(f"❌ خطا: {e}")
+                  return None
 
           def clear_c_txt():
+              """پاک کردن محتوای c.txt"""
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FILE_PATH}"
-              content_b64 = base64.b64encode(b"# waiting for next command").decode('utf-8')
+              
               response = requests.get(url, headers=headers)
               sha = response.json().get('sha') if response.status_code == 200 else None
-              data = {"message": "🧹 Clear commands", "content": content_b64, "branch": "main"}
-              if sha: data["sha"] = sha
+              
+              content_b64 = base64.b64encode(b"# waiting for next command").decode('utf-8')
+              data = {
+                  "message": "🧹 Clear commands",
+                  "content": content_b64,
+                  "branch": "main"
+              }
+              if sha:
+                  data["sha"] = sha
+              
               requests.put(url, headers=headers, json=data)
               debug_print("🗑️ c.txt پاک شد")
 
           def execute_command(page, command):
               cmd_lower = command.lower().strip()
+
               if cmd_lower.startswith('click '):
                   parts = cmd_lower.split()
                   if len(parts) == 3:
                       try:
                           x, y = int(parts[1]), int(parts[2])
-                          debug_print(f"🖱️ کلیک در ({x}, {y})")
+                          debug_print(f"🖱️ کلیک ({x}, {y})")
                           page.mouse.click(x, y)
                           return True
-                      except ValueError: debug_print(f"⚠️ مختصات نامعتبر: {command}")
-                  else: debug_print(f"⚠️ فرمت click نامعتبر: {command}")
+                      except ValueError:
+                          debug_print(f"⚠️ مختصات نامعتبر")
+                          return False
+                  else:
+                      debug_print(f"⚠️ فرمت click نامعتبر")
+                      return False
+
               elif cmd_lower.startswith('type '):
                   parts = command.split(' ', 1)
                   if len(parts) == 2:
                       debug_print(f"⌨️ تایپ: {parts[1]}")
                       page.keyboard.type(parts[1])
                       return True
-                  else: debug_print(f"⚠️ دستور type بدون متن: {command}")
-              elif cmd_lower.startswith('#'): debug_print(f"ℹ️ نظر: {command}")
+                  else:
+                      debug_print(f"⚠️ دستور type نامعتبر")
+                      return False
+
               elif cmd_lower == "enter":
-                  debug_print(f"⏎ کلید Enter زده شد")
+                  debug_print(f"⏎ Enter")
                   page.keyboard.press("Enter")
                   return True
-              else: debug_print(f"⚠️ دستور ناشناخته: {command}")
-              return False
 
-          def clean_old_frames(max_frames=100):
+              else:
+                  debug_print(f"⚠️ دستور ناشناخته: {command}")
+                  return False
+
+          def clean_old_frames(max_frames=50):
+              """پاک کردن فریم‌های قدیمی"""
               url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
               response = requests.get(url, headers=headers)
+
               if response.status_code == 200:
                   files = response.json()
                   if files and isinstance(files, list):
-                      png_files = sorted([f for f in files if f['name'].endswith('.png')], key=lambda x: x['name'])
+                      png_files = sorted([f for f in files if f['name'].endswith('.png')], 
+                                        key=lambda x: x['name'])
                       if len(png_files) > max_frames:
                           for old_file in png_files[:-max_frames]:
                               delete_url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}/{old_file['name']}"
-                              delete_data = {"message": f"🗑️ حذف {old_file['name']}", "sha": old_file['sha'], "branch": "main"}
+                              delete_data = {
+                                  "message": f"🗑️ حذف {old_file['name']}",
+                                  "sha": old_file['sha'],
+                                  "branch": "main"
+                              }
                               requests.delete(delete_url, headers=headers, json=delete_data)
                               debug_print(f"🗑️ حذف: {old_file['name']}")
 
           def main():
-              debug_print("🚀 Remote Browser Server شروع به کار کرد")
+              debug_print("🚀 شروع به کار کرد")
+              debug_print("📋 منتظر دستورات از c.txt...")
+
               last_command = None
+              frame_count = 0
+
               with sync_playwright() as p:
                   browser = p.chromium.launch(headless=True)
                   page = browser.new_page()
                   page.goto('https://www.google.com')
-                  debug_print("✅ صفحه گوگل باز شد")
-                  screenshot = page.screenshot(type='png')
-                  upload_frame(screenshot)
+                  debug_print("✅ گوگل باز شد")
+
                   while True:
                       try:
                           content = get_c_txt_content()
+
                           if content and content != last_command and not content.startswith('#'):
-                              debug_print(f"📖 دستور جدید: {content}")
+                              debug_print(f"📖 دستور: {content}")
+
                               if execute_command(page, content):
                                   last_command = content
                                   time.sleep(1)
@@ -181,16 +197,22 @@ jobs:
                                   upload_frame(screenshot)
                                   clear_c_txt()
                               else:
-                                  debug_print(f"⚠️ خطا در اجرای دستور: {content}")
                                   clear_c_txt()
-                          time.sleep(3)
+
+                          time.sleep(2)
                           screenshot = page.screenshot(type='png')
                           upload_frame(screenshot)
-                          clean_old_frames(100)
+                          
+                          frame_count += 1
+                          if frame_count % 10 == 0:
+                              clean_old_frames(50)
+
                       except Exception as e:
                           debug_print(f"💥 خطا: {e}")
                           time.sleep(5)
+
           if __name__ == "__main__":
               main()
           EOF
+
           python3 remote_browser.py
