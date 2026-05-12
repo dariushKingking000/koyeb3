@@ -1,4 +1,4 @@
-name: Remote Browser Controller (Undetectable)
+name: Remote Browser Controller
 on: 
   workflow_dispatch:
 
@@ -64,7 +64,7 @@ jobs:
               data = {"message": f"📸 {description}", "content": content, "branch": "main"}
               put_response = requests.put(url, headers=headers, json=data)
               if put_response.status_code in [200, 201]:
-                  debug_print(f"✅ فریم آپلود شد {description}")
+                  debug_print(f"✅ فریم آپلود شد")
                   return True
               return False
 
@@ -91,7 +91,7 @@ jobs:
               if sha:
                   data["sha"] = sha
               requests.put(url, headers=headers, json=data)
-              debug_print("🗑️ c.txt پاک شد")
+              debug_print("🗑️ پاک شد")
 
           def execute_command(page, command):
               cmd_lower = command.lower().strip()
@@ -101,7 +101,7 @@ jobs:
                   if len(parts) == 3:
                       try:
                           x, y = int(parts[1]), int(parts[2])
-                          debug_print(f"🖱️ کلیک در ({x}, {y})")
+                          debug_print(f"🖱️ کلیک ({x}, {y})")
                           page.mouse.click(x, y)
                           return True
                       except ValueError:
@@ -122,26 +122,27 @@ jobs:
 
               else:
                   debug_print(f"⌨️ تایپ: {command}")
-                  page.keyboard.type(command, delay=random.randint(50, 150))
+                  for ch in command:
+                      page.keyboard.type(ch, delay=random.randint(30, 100))
+                      time.sleep(random.uniform(0.02, 0.08))
                   return True
 
           def main():
-              debug_print("🚀 شروع با Patchright (headless)")
+              debug_print("🚀 شروع با Patchright")
               debug_print("📋 منتظر دستورات...")
 
               last_command = None
 
               with sync_playwright() as p:
                   browser = p.chromium.launch(
-                      headless=True,  # برگشت به headless
+                      headless=True,
                       args=[
-                          '--disable-blink-features=AutomationControlled',
                           '--no-sandbox',
                           '--disable-dev-shm-usage',
-                          '--disable-web-security',
-                          '--disable-features=IsolateOrigins,site-per-process',
-                          '--disable-site-isolation-trials',
+                          '--disable-setuid-sandbox',
                           '--disable-gpu',
+                          '--disable-software-rasterizer',
+                          '--disable-features=VizDisplayCompositor',
                       ]
                   )
                   
@@ -155,13 +156,19 @@ jobs:
                   # مخفی کردن webdriver
                   page.add_init_script("""
                       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                      Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
-                      window.chrome = {runtime: {}};
                   """)
                   
+                  # با timeout بیشتر و ignore HTTPS errors
+                  page.set_default_timeout(60000)
+                  
                   debug_print("🌐 رفتن به گوگل...")
-                  page.goto('https://www.google.com', wait_until='networkidle')
-                  time.sleep(2)
+                  try:
+                      page.goto('https://www.google.com', wait_until='domcontentloaded', timeout=60000)
+                  except Exception as e:
+                      debug_print(f"⚠️ تلاش با load: {e}")
+                      page.goto('https://www.google.com', wait_until='load', timeout=60000)
+                  
+                  time.sleep(3)
                   debug_print("✅ گوگل باز شد")
 
                   screenshot = page.screenshot(type='png')
@@ -178,7 +185,7 @@ jobs:
                                   last_command = content
                                   time.sleep(0.5)
                                   screenshot = page.screenshot(type='png')
-                                  upload_frame(screenshot, f"after")
+                                  upload_frame(screenshot, "after")
                                   clear_c_txt()
                               else:
                                   clear_c_txt()
