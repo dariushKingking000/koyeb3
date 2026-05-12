@@ -1,4 +1,4 @@
-name: Remote Browser Controller
+name: Remote Browser Controller - Google
 on: 
   workflow_dispatch:
 
@@ -42,7 +42,6 @@ jobs:
           import random
           from playwright.sync_api import sync_playwright
 
-          # Fix Windows encoding
           if sys.platform == 'win32':
               sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
@@ -102,7 +101,6 @@ jobs:
               cmd_lower = command.lower().strip()
               debug_print(f"EXECUTING: {command}")
               
-              # دستور کلیک
               if cmd_lower.startswith('click '):
                   parts = cmd_lower.split()
                   if len(parts) == 3:
@@ -118,61 +116,72 @@ jobs:
                       debug_print(f"Invalid click format")
                       return False
 
-              # دستور Enter
               elif cmd_lower == "enter":
                   debug_print("Enter pressed")
                   page.keyboard.press("Enter")
                   return True
 
-              # هر چیز دیگر = تایپ کردن
               else:
-                  debug_print(f"Typing text: [{command}]")
-                  # روش 1: پیدا کردن باکس فعال و پر کردن
-                  try:
-                      # سعی کن باکس ورودی فعال رو پیدا کنی
-                      page.wait_for_selector('input, textarea, [contenteditable="true"]', timeout=3000)
-                      focused = page.locator(':focus')
-                      if focused.count() > 0:
-                          focused.fill(command)
-                          debug_print(f"Filled focused input: {command}")
-                      else:
-                          # اگر باکسی فوکوس نیست، از صفحه کلید استفاده کن
-                          page.keyboard.type(command, delay=random.randint(50, 100))
-                          debug_print(f"Typed with keyboard: {command}")
-                  except:
-                      # روش دوم: تایپ مستقیم با کیبورد
-                      page.keyboard.type(command, delay=random.randint(50, 100))
-                      debug_print(f"Typed with keyboard (fallback): {command}")
-                  
-                  time.sleep(0.5)
+                  debug_print(f"Typing: [{command}]")
+                  # تایپ کاراکتر به کاراکتر با تأخیر شبیه انسان
+                  for ch in command:
+                      page.keyboard.type(ch, delay=random.randint(30, 80))
+                      time.sleep(random.uniform(0.02, 0.07))
+                  debug_print(f"Typing complete: [{command}]")
                   return True
 
           def main():
-              debug_print("Starting...")
-              debug_print("Waiting for commands from c.txt...")
+              debug_print("Starting Google Browser...")
+              debug_print("Waiting for commands...")
 
               last_command = None
 
               with sync_playwright() as p:
-                  browser = p.chromium.launch(headless=True)
+                  browser = p.chromium.launch(
+                      headless=True,
+                      args=[
+                          '--no-sandbox',
+                          '--disable-dev-shm-usage',
+                          '--disable-blink-features=AutomationControlled',
+                          '--disable-features=IsolateOrigins,site-per-process',
+                      ]
+                  )
+                  
                   context = browser.new_context(
                       viewport={'width': 1280, 'height': 720},
                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+                      locale='en-US',
+                      timezone_id='America/New_York',
                   )
+                  
                   page = context.new_page()
                   
-                  test_url = "https://httpbin.org/forms/post"
-                  debug_print(f"Going to: {test_url}")
-                  page.goto(test_url, timeout=60000)
-                  debug_print(f"Opened: {page.url}")
+                  # مخفی کردن webdriver
+                  page.add_init_script("""
+                      Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                      Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+                      window.chrome = {runtime: {}};
+                  """)
                   
-                  # کلیک روی باکس اسم برای فوکوس
+                  # رفتن به گوگل
+                  debug_print("Going to Google...")
                   try:
-                      page.click('input[name="custname"]')
-                      debug_print("Clicked on customer name field")
+                      page.goto('https://www.google.com', wait_until='domcontentloaded', timeout=60000)
+                      debug_print(f"Opened: {page.url}")
+                  except Exception as e:
+                      debug_print(f"Google error: {e}, trying again...")
+                      page.goto('https://www.google.com', timeout=60000)
+                      debug_print(f"Opened: {page.url}")
+                  
+                  time.sleep(2)
+                  
+                  # کلیک روی باکس جستجو برای فوکوس
+                  try:
+                      page.click('textarea[name="q"], input[name="q"]')
+                      debug_print("Clicked on search box")
                   except:
-                      debug_print("Could not click on field, but continuing...")
-
+                      debug_print("Could not click on search box")
+                  
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
 
@@ -189,13 +198,12 @@ jobs:
                                   screenshot = page.screenshot(type='png')
                                   upload_frame(screenshot, f"after")
                                   clear_c_txt()
-                                  debug_print(f"Command done: {content}")
+                                  debug_print(f"Command done")
                               else:
-                                  debug_print(f"Command failed: {content}")
+                                  debug_print(f"Command failed")
                                   clear_c_txt()
                           else:
-                              time.sleep(10)
-                              debug_print("Alive, waiting...")
+                              time.sleep(5)
                               
                       except Exception as e:
                           debug_print(f"Error: {e}")
