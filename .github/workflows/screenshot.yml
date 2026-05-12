@@ -1,241 +1,272 @@
-name: Live Stream to Aparat - Stable
-on: [push]
+name: Remote Browser Controller
+on: 
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'  # هر 5 دقیقه یکبار چک کن (اختیاری)
+
 permissions:
   contents: write
+
 jobs:
-  stream:
+  browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 ساعت حداکثر
     steps:
-    - uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
-    
-    - name: Setup Python & FFmpeg & Xvfb
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg xvfb
-        pip install playwright requests
-        playwright install chromium
-    
-    - name: Run Continuous Stream with Command Watcher
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        DISPLAY: ":99"
-      shell: bash
-      run: |
-        # راه‌اندازی Xvfb
-        Xvfb :99 -screen 0 1280x720x24 &
-        sleep 2
-        
-        cat > streamer.py << 'EOF'
-        import requests
-        import time
-        import datetime
-        import os
-        import base64
-        import sys
-        import subprocess as sp
-        from playwright.sync_api import sync_playwright
-        
-        def debug_print(msg):
-            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
-            sys.stdout.flush()
-        
-        # ========== تنظیمات ==========
-        TARGET_REPO_OWNER = "dariushKingking000"
-        TARGET_REPO_NAME = "koyeb3"
-        FILE_PATH = "c.txt"
-        HISTORY_FILE = "executed_commands.txt"
-        
-        RTMP_URL = "rtmp://rtmp.cdn.asset.aparat.com:443/event"
-        STREAM_KEY = "e83de8cf9afbf569b17e1addf487ed275?s=b01212e4d2d99292"
-        FULL_RTMP = f"{RTMP_URL}/{STREAM_KEY}"
-        # ============================
-        
-        headers = {
-            'Authorization': f'token {os.getenv("GITHUB_TOKEN")}',
-            'Accept': 'application/vnd.github.v3+json'
-        }
-        
-        def upload_history_to_repo():
-            try:
-                with open(HISTORY_FILE, 'rb') as f:
-                    content = base64.b64encode(f.read()).decode('utf-8')
-            except FileNotFoundError:
-                return True
-            
-            url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{HISTORY_FILE}"
-            response = requests.get(url, headers=headers)
-            sha = response.json().get('sha') if response.status_code == 200 else None
-            
-            data = {
-                "message": f"📝 Update history {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                "content": content,
-                "branch": "main"
-            }
-            if sha:
-                data["sha"] = sha
-            
-            put_response = requests.put(url, headers=headers, json=data)
-            return put_response.status_code in [200, 201]
-        
-        def load_executed_commands():
-            try:
-                with open(HISTORY_FILE, 'r') as f:
-                    return set(line.strip() for line in f if line.strip())
-            except FileNotFoundError:
-                return set()
-        
-        def save_executed_command(command):
-            with open(HISTORY_FILE, 'a') as f:
-                f.write(command + '\n')
-            debug_print(f"💾 ذخیره در تاریخچه: {command}")
-            upload_history_to_repo()
-        
-        def get_c_txt_content():
-            url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FILE_PATH}"
-            try:
-                response = requests.get(url, headers=headers)
-                if response.status_code == 200:
-                    content = response.json().get('content', '')
-                    if content:
-                        decoded = base64.b64decode(content).decode('utf-8')
-                        return decoded.strip()
-                return None
-            except Exception as e:
-                debug_print(f"❌ خطا: {e}")
-                return None
-        
-        def execute_command(page, command):
-            cmd_lower = command.lower().strip()
-            
-            if cmd_lower.startswith('click '):
-                parts = cmd_lower.split()
-                if len(parts) == 3:
-                    try:
-                        x, y = int(parts[1]), int(parts[2])
-                        debug_print(f"🖱️ کلیک ({x}, {y})")
-                        page.mouse.click(x, y)
-                        return True
-                    except ValueError:
-                        debug_print(f"⚠️ مختصات نامعتبر")
-                        return False
-            
-            elif cmd_lower.startswith('type '):
-                parts = command.split(' ', 1)
-                if len(parts) == 2:
-                    debug_print(f"⌨️ تایپ: {parts[1]}")
-                    page.keyboard.type(parts[1])
-                    return True
-                else:
-                    debug_print(f"⚠️ دستور type نامعتبر")
-                    return False
-            
-            else:
-                debug_print(f"⚠️ دستور ناشناخته: {command}")
-                return False
-        
-        def start_ffmpeg():
-            """راه‌اندازی ffmpeg با تنظیمات پایدار"""
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
-                '-f', 'rawvideo',
-                '-vcodec', 'rawvideo',
-                '-s', '1280x720',
-                '-pix_fmt', 'rgb24',
-                '-r', '5',  # کاهش به 5 فریم در ثانیه
-                '-i', '-',
-                '-c:v', 'libx264',
-                '-preset', 'ultrafast',
-                '-tune', 'zerolatency',
-                '-b:v', '800k',  # کاهش بیت ریت
-                '-bufsize', '1600k',
-                '-g', '15',
-                '-f', 'flv',
-                '-flvflags', 'no_duration_filesize',
-                FULL_RTMP
-            ]
-            return sp.Popen(ffmpeg_cmd, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-        
-        def main():
-            debug_print("🚀 شروع استریم زنده به آپارات")
-            debug_print(f"🎯 RTMP: {RTMP_URL}")
-            debug_print("🌐 مرورگر در حال باز شدن...")
-            
-            executed = load_executed_commands()
-            
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=False)
-                page = browser.new_page()
-                page.goto('https://www.google.com')
-                debug_print("✅ صفحه گوگل باز شد")
-                
-                # راه‌اندازی ffmpeg
-                ffmpeg_proc = start_ffmpeg()
-                debug_print("🎥 ffmpeg راه‌اندازی شد")
-                
-                last_check_time = time.time()
-                frame_time = time.time()
-                
-                try:
-                    while True:
-                        # گرفتن فریم هر 0.2 ثانیه (5 فریم در ثانیه)
-                        current_time = time.time()
-                        
-                        if current_time - frame_time >= 0.2:
-                            frame_time = current_time
-                            try:
-                                if ffmpeg_proc and ffmpeg_proc.stdin:
-                                    screenshot = page.screenshot(type='png')
-                                    ffmpeg_proc.stdin.write(screenshot)
-                            except (BrokenPipeError, Exception) as e:
-                                debug_print(f"⚠️ خطا در ffmpeg، راه‌اندازی مجدد...")
-                                if ffmpeg_proc:
-                                    try:
-                                        ffmpeg_proc.stdin.close()
-                                    except:
-                                        pass
-                                    ffmpeg_proc.wait(timeout=2)
-                                ffmpeg_proc = start_ffmpeg()
-                        
-                        # چک کردن دستورات هر 30 ثانیه
-                        if current_time - last_check_time >= 30:
-                            last_check_time = current_time
-                            
-                            content = get_c_txt_content()
-                            if content:
-                                commands = [line.strip() for line in content.split('\n') if line.strip()]
-                                new_commands = [cmd for cmd in commands if cmd not in executed]
-                                
-                                if new_commands:
-                                    debug_print(f"✨ {len(new_commands)} دستور جدید: {new_commands}")
-                                    for command in new_commands:
-                                        if execute_command(page, command):
-                                            save_executed_command(command)
-                                            executed.add(command)
-                                        time.sleep(0.5)
-                                else:
-                                    debug_print("🎥 استریم فعال - منتظر دستور...")
-                            else:
-                                debug_print("⚠️ c.txt پیدا نشد")
-                        
-                        time.sleep(0.1)  # جلوگیری از مصرف بالای CPU
-                        
-                except KeyboardInterrupt:
-                    debug_print("🛑 در حال بستن...")
-                finally:
-                    if ffmpeg_proc:
-                        try:
-                            ffmpeg_proc.stdin.close()
-                        except:
-                            pass
-                        ffmpeg_proc.wait()
-                    browser.close()
-        
-        if __name__ == "__main__":
-            main()
-        EOF
-        
-        # اجرا با xvfb-run
-        xvfb-run --auto-servernum python3 streamer.py
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium
+
+      - name: Run Remote Browser Server
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > remote_browser.py << 'EOF'
+          import requests
+          import time
+          import datetime
+          import os
+          import base64
+          import sys
+          from playwright.sync_api import sync_playwright
+
+          def debug_print(msg):
+              print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
+              sys.stdout.flush()
+
+          # تنظیمات
+          TARGET_REPO_OWNER = "dariushKingking000"
+          TARGET_REPO_NAME = "koyeb3"
+          FILE_PATH = "c.txt"
+          FRAME_FOLDER = "frames"
+          GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+
+          headers = {
+              'Authorization': f'token {GITHUB_TOKEN}',
+              'Accept': 'application/vnd.github.v3+json'
+          }
+
+          def get_file_sha(file_path):
+              """دریافت SHA فایل"""
+              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
+              response = requests.get(url, headers=headers)
+              if response.status_code == 200:
+                  return response.json().get('sha')
+              return None
+
+          def upload_frame(frame_data, frame_num):
+              """آپلود یک فریم به ریپو"""
+              content = base64.b64encode(frame_data).decode('utf-8')
+              file_path = f"{FRAME_FOLDER}/frame_{frame_num:06d}.png"
+
+              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{file_path}"
+
+              response = requests.get(url, headers=headers)
+              sha = response.json().get('sha') if response.status_code == 200 else None
+
+              data = {
+                  "message": f"📸 Frame {frame_num}",
+                  "content": content,
+                  "branch": "main"
+              }
+              if sha:
+                  data["sha"] = sha
+
+              put_response = requests.put(url, headers=headers, json=data)
+              if put_response.status_code in [200, 201]:
+                  debug_print(f"✅ فریم {frame_num} آپلود شد")
+                  return True
+              else:
+                  debug_print(f"❌ خطا در آپلود فریم {frame_num}: {put_response.status_code}")
+                  return False
+
+          def get_c_txt_content():
+              """خواندن دستورات از c.txt"""
+              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FILE_PATH}"
+              try:
+                  response = requests.get(url, headers=headers)
+                  if response.status_code == 200:
+                      content = response.json().get('content', '')
+                      if content:
+                          decoded = base64.b64decode(content).decode('utf-8')
+                          return decoded.strip()
+                  return None
+              except Exception as e:
+                  debug_print(f"❌ خطا در دریافت c.txt: {e}")
+                  return None
+
+          def clear_c_txt():
+              """پاک کردن محتوای c.txt بعد از خواندن (اختیاری)"""
+              # برای جلوگیری از اجرای مکرر دستورات
+              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FILE_PATH}"
+              
+              content_b64 = base64.b64encode(b"# waiting for next command").decode('utf-8')
+              sha = get_file_sha(FILE_PATH)
+              
+              data = {
+                  "message": "🧹 Clear commands after execution",
+                  "content": content_b64,
+                  "branch": "main"
+              }
+              if sha:
+                  data["sha"] = sha
+              
+              requests.put(url, headers=headers, json=data)
+              debug_print("🗑️ c.txt پاک شد")
+
+          def execute_command(page, command):
+              """اجرای یک دستور روی صفحه"""
+              cmd_lower = command.lower().strip()
+
+              if cmd_lower.startswith('click '):
+                  parts = cmd_lower.split()
+                  if len(parts) == 3:
+                      try:
+                          x, y = int(parts[1]), int(parts[2])
+                          debug_print(f"🖱️ کلیک در ({x}, {y})")
+                          page.mouse.click(x, y)
+                          return True
+                      except ValueError:
+                          debug_print(f"⚠️ مختصات نامعتبر: {command}")
+                          return False
+                  else:
+                      debug_print(f"⚠️ فرمت click نامعتبر: {command}")
+                      return False
+
+              elif cmd_lower.startswith('type '):
+                  parts = command.split(' ', 1)
+                  if len(parts) == 2:
+                      debug_print(f"⌨️ تایپ: {parts[1]}")
+                      page.keyboard.type(parts[1])
+                      return True
+                  else:
+                      debug_print(f"⚠️ دستور type بدون متن: {command}")
+                      return False
+
+              elif cmd_lower.startswith('#'):
+                  debug_print(f"ℹ️ نظر: {command}")
+                  return True
+
+              elif cmd_lower == "enter":
+                  debug_print(f"⏎ کلید Enter زده شد")
+                  page.keyboard.press("Enter")
+                  return True
+
+              else:
+                  debug_print(f"⚠️ دستور ناشناخته: {command}")
+                  return False
+
+          def clean_old_frames(max_frames=50):
+              """پاک کردن فریم‌های قدیمی"""
+              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
+              response = requests.get(url, headers=headers)
+
+              if response.status_code == 200:
+                  files = response.json()
+                  if files and isinstance(files, list):
+                      png_files = sorted([f for f in files if f['name'].endswith('.png')], 
+                                        key=lambda x: x['name'])
+                      for old_file in png_files[:-max_frames]:
+                          delete_url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}/{old_file['name']}"
+                          delete_data = {
+                              "message": f"🗑️ حذف فریم قدیمی {old_file['name']}",
+                              "sha": old_file['sha'],
+                              "branch": "main"
+                          }
+                          requests.delete(delete_url, headers=headers, json=delete_data)
+                          debug_print(f"🗑️ حذف: {old_file['name']}")
+
+          def ensure_frames_folder():
+              """ایجاد پوشه frames اگر وجود ندارد"""
+              url = f"https://api.github.com/repos/{TARGET_REPO_OWNER}/{TARGET_REPO_NAME}/contents/{FRAME_FOLDER}"
+              response = requests.get(url, headers=headers)
+              if response.status_code != 200:
+                  dummy_content = base64.b64encode(b"frames folder").decode('utf-8')
+                  dummy_data = {
+                      "message": "Create frames folder",
+                      "content": dummy_content,
+                      "branch": "main"
+                  }
+                  requests.put(url, headers=headers, json=dummy_data)
+                  debug_print("📁 پوشه frames ایجاد شد")
+
+          def main():
+              debug_print("🚀 Remote Browser Server شروع به کار کرد")
+              debug_print(f"🎯 ریپو: {TARGET_REPO_OWNER}/{TARGET_REPO_NAME}")
+              debug_print("📋 منتظر دستورات از c.txt...")
+
+              ensure_frames_folder()
+
+              frame_num = 0
+              last_command = None
+              last_command_time = 0
+
+              with sync_playwright() as p:
+                  browser = p.chromium.launch(headless=True)
+                  page = browser.new_page()
+                  page.goto('https://www.google.com')
+                  debug_print("✅ صفحه گوگل باز شد")
+
+                  # فریم اولیه
+                  screenshot = page.screenshot(type='png')
+                  upload_frame(screenshot, frame_num)
+                  frame_num += 1
+
+                  while True:
+                      try:
+                          # خواندن دستور از c.txt
+                          content = get_c_txt_content()
+
+                          if content and content != last_command and not content.startswith('#'):
+                              debug_print(f"📖 دستور جدید: {content}")
+
+                              # اجرای دستور
+                              if execute_command(page, content):
+                                  last_command = content
+                                  last_command_time = time.time()
+                                  
+                                  # کمی صبر برای اعمال تغییرات
+                                  time.sleep(1)
+                                  
+                                  # گرفتن فریم جدید بعد از اجرای دستور
+                                  screenshot = page.screenshot(type='png')
+                                  if upload_frame(screenshot, frame_num):
+                                      debug_print(f"✅ فریم {frame_num} بعد از دستور آپلود شد")
+                                  frame_num += 1
+                                  
+                                  # پاک کردن c.txt (اختیاری - برای جلوگیری از اجرای مجدد)
+                                  # clear_c_txt()
+                              else:
+                                  debug_print(f"⚠️ خطا در اجرای دستور: {content}")
+
+                          # هر 3 ثانیه یک فریم معمولی بگیر (برای نرمال)
+                          time.sleep(3)
+                          screenshot = page.screenshot(type='png')
+                          if upload_frame(screenshot, frame_num):
+                              pass  # debug_print(f"✅ فریم {frame_num} آپلود شد")
+                          frame_num += 1
+
+                          # هر 10 فریم یکبار پاکسازی کن
+                          if frame_num % 10 == 0:
+                              clean_old_frames(50)
+
+                      except Exception as e:
+                          debug_print(f"💥 خطا: {e}")
+                          time.sleep(5)
+
+          if __name__ == "__main__":
+              main()
+          EOF
+
+          python3 remote_browser.py
