@@ -1,21 +1,49 @@
-name: Google Screenshot to Repo
-on:9ع9عorkflow_dispatch:
-  repos9ry_dispatch:
-    t8es: [flask-alive]
+name: Download and Save ngrok
+on: 
+  workflow_dispatch:  # فقط دستی اجرا کن
 
-permissions:
-  c8899ontents: write
-899ith:
-      78  tokمتتختختخهتen: ${{ secrets.GITHUB_TOKEN }}
-   098     fetch-depth: 0  # کل history رو بگیر
-    
-اses: acti98ons/setup-python@v5
-      with:
-        pyt8ا
-    - name: Install Playwright
-  ه run: |
-  د      pip install playwright pillow
-  هد    playwright inst
-        python -c "
-        from playwright.sync_api import sync_playwright
-        import datetime
+jobs:
+  download-ngrok:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download ngrok
+        run: |
+          Write-Host "Downloading ngrok..."
+          Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
+          Write-Host "Download complete!"
+
+      - name: Extract ngrok
+        run: |
+          Write-Host "Extracting ngrok.zip..."
+          Expand-Archive -Path "ngrok.zip" -DestinationPath "."
+          Write-Host "Extract complete!"
+
+      - name: Save ngrok to repository
+        run: |
+          # اگه پوشه tools وجود نداره، بساز
+          if (!(Test-Path -Path "tools")) {
+            New-Item -ItemType Directory -Path "tools"
+          }
+          
+          # انتقال فایل ngrok.exe به پوشه tools
+          if (Test-Path -Path "ngrok.exe") {
+            Move-Item -Path "ngrok.exe" -Destination "tools/ngrok.exe" -Force
+            Write-Host "ngrok.exe saved to tools/ngrok.exe"
+          } else {
+            Write-Host "ngrok.exe not found!"
+          }
+          
+          # پاک کردن فایل زیپ
+          Remove-Item -Path "ngrok.zip" -Force -ErrorAction SilentlyContinue
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add tools/ngrok.exe
+          git commit -m "Add ngrok executable" || echo "No changes to commit"
+          git push origin HEAD:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
