@@ -77,6 +77,7 @@ jobs:
                       content = response.json().get('content', '')
                       if content:
                           decoded = base64.b64decode(content).decode('utf-8')
+                          debug_print(f"c.txt content: {decoded[:50]}")
                           return decoded.strip()
                   return None
               except Exception as e:
@@ -96,7 +97,8 @@ jobs:
 
           def execute_command(page, command):
               cmd_lower = command.lower().strip()
-
+              debug_print(f"EXECUTING: {command}")
+              
               if cmd_lower.startswith('click '):
                   parts = cmd_lower.split()
                   if len(parts) == 3:
@@ -106,10 +108,10 @@ jobs:
                           page.mouse.click(x, y)
                           return True
                       except ValueError:
-                          debug_print(f"Invalid coordinates: {command}")
+                          debug_print(f"Invalid coordinates")
                           return False
                   else:
-                      debug_print(f"Invalid click format: {command}")
+                      debug_print(f"Invalid click format")
                       return False
 
               elif cmd_lower == "enter":
@@ -117,18 +119,22 @@ jobs:
                   page.keyboard.press("Enter")
                   return True
 
-              elif cmd_lower == "#refresh" or cmd_lower == "refresh":
-                  debug_print("Refresh frame")
+              elif cmd_lower.startswith('#'):
+                  debug_print(f"Comment: {command}")
                   return True
 
               else:
-                  debug_print(f"Typing: {command}")
-                  page.keyboard.type(command, delay=random.randint(30, 100))
+                  debug_print(f"Typing text: [{command}]")
+                  # تایپ کاراکتر به کاراکتر با delay
+                  for ch in command:
+                      page.keyboard.type(ch, delay=random.randint(50, 150))
+                      time.sleep(random.uniform(0.03, 0.08))
+                  debug_print(f"Finished typing: {command}")
                   return True
 
           def main():
-              debug_print("Starting... (Windows)")
-              debug_print("Waiting for commands...")
+              debug_print("Starting...")
+              debug_print("Waiting for commands from c.txt...")
 
               last_command = None
 
@@ -139,14 +145,21 @@ jobs:
                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
                   )
                   page = context.new_page()
-
-                  page.add_init_script("""
-                      Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                  """)
-
-                  debug_print("Going to google.com...")
-                  page.goto('https://www.google.com', timeout=60000)
+                  
+                  # برو به سایت تست (بدون کپچا)
+                  test_url = "https://httpbin.org/forms/post"
+                  debug_print(f"Going to test site: {test_url}")
+                  page.goto(test_url, timeout=60000)
                   debug_print(f"Opened: {page.url}")
+                  
+                  # یه جای ساده برای کلیک و تایپ (باکس فرم)
+                  debug_print("Looking for input field...")
+                  try:
+                      # پیدا کردن باکس متن روی صفحه تست
+                      page.fill('input[name="custname"]', "Ready for commands")
+                      debug_print("Input field found and initialized")
+                  except:
+                      debug_print("Could not find input field, but continuing...")
 
                   screenshot = page.screenshot(type='png')
                   upload_frame(screenshot, "initial")
@@ -154,19 +167,27 @@ jobs:
                   while True:
                       try:
                           content = get_c_txt_content()
+                          
                           if content and content != last_command and not content.startswith('#'):
-                              debug_print(f"Command: {content}")
+                              debug_print(f"NEW COMMAND DETECTED: {content}")
+                              
                               if execute_command(page, content):
                                   last_command = content
-                                  time.sleep(0.5)
+                                  time.sleep(0.8)
                                   screenshot = page.screenshot(type='png')
-                                  upload_frame(screenshot, "after")
+                                  upload_frame(screenshot, f"after_{content[:20]}")
                                   clear_c_txt()
+                                  debug_print(f"Command completed: {content}")
                               else:
+                                  debug_print(f"Command failed: {content}")
                                   clear_c_txt()
-                          time.sleep(1)
+                          else:
+                              # فقط هر 10 ثانیه یکبار لاگ بده که زنده است
+                              time.sleep(10)
+                              debug_print("Still alive, waiting for commands...")
+                              
                       except Exception as e:
-                          debug_print(f"Error: {e}")
+                          debug_print(f"Error in main loop: {e}")
                           time.sleep(5)
 
           if __name__ == "__main__":
